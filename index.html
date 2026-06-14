@@ -83,6 +83,12 @@
   .section-title.alt{ color:var(--magenta); }
   .divider{ height:2px; background:#2a2a2a; margin:6px 0; }
 
+  .day-nav{ display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:4px; }
+  .day-arrow{ background:none; border:2px solid #444; color:var(--cyan); font:inherit; font-size:1.05em;
+    padding:1px 12px; cursor:pointer; line-height:1.4; }
+  .day-arrow.disabled{ color:#333; border-color:#222; cursor:default; }
+  .day-label{ color:var(--cyan); letter-spacing:0.08em; min-width:9.5em; text-align:center; }
+
   .match .team{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .match .score{ flex:0 0 auto; min-width:3.2em; text-align:center; color:var(--yellow); font-weight:bold; }
   .match .status{ flex:0 0 auto; min-width:3em; text-align:right; }
@@ -363,6 +369,7 @@ const Data = (() => {
   let classicPaged = false;       // false = league picker, true = showing pages
   let classicPageIdx = 0;
   let classicTimer = null;
+  let dayOffset = 0;               // 302 day nav: 0=today, -1=yesterday, +1=tomorrow...
 
   let dataset = null;             // loaded from Data layer
   let loadError = false;
@@ -390,6 +397,42 @@ const Data = (() => {
     if(isNaN(d.getTime())) return kickoff;
     const p = n => String(n).padStart(2,'0');
     return p(d.getHours())+':'+p(d.getMinutes());
+  }
+
+  // ---- local-day grouping (302 day navigation) ----
+  const WD = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  const MO = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+  function localDateKey(d){
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function startOfLocalDay(d){
+    const x = new Date(d); x.setHours(0,0,0,0); return x;
+  }
+  // "Today" for football purposes is a broadcast day, not a calendar day:
+  // it shouldn't flip over at midnight while tonight's matches (and their
+  // now-final results) are still the thing everyone's looking at. Before
+  // this cutoff hour, "today" still refers to yesterday's calendar date.
+  const DAY_CUTOFF_HOUR = 5;
+  function todayReference(){
+    const now = new Date();
+    if(now.getHours() < DAY_CUTOFF_HOUR) now.setDate(now.getDate()-1);
+    return startOfLocalDay(now);
+  }
+  // Which local calendar day does this match's kickoff fall on? null if
+  // kickoff is missing/unparseable (so it's excluded from any day, not
+  // wrongly bucketed into "today").
+  function matchDateKey(m){
+    if(!m.kickoff) return null;
+    const d = new Date(m.kickoff);
+    if(isNaN(d.getTime())) return null;
+    return localDateKey(d);
+  }
+  function dayLabel(offset, target){
+    if(offset===0) return 'TODAY';
+    if(offset===-1) return 'YESTERDAY';
+    if(offset===1) return 'TOMORROW';
+    return WD[target.getDay()]+' '+target.getDate()+' '+MO[target.getMonth()];
   }
 
   // Shrinks a single-line element's font-size until its content fits its box.
@@ -525,17 +568,44 @@ const Data = (() => {
     const screen = document.getElementById('screen');
     screen.innerHTML='';
     buildHeader(screen,'FOOTBALL','302', dataset.competition, buildToggle());
-    let lastGroup = null;
-    dataset.matches.forEach((m,i)=>{
-      const key='m'+i;
-      if(m.group && m.group !== lastGroup){
-        screen.appendChild(el('div','section-title','GROUP '+m.group));
-        lastGroup = m.group;
-      }
-      screen.appendChild(matchRow(m,key,true));
-      if(expandedMatches[key]) scorerRows(m).forEach(r=>screen.appendChild(r));
-    });
-    screen.appendChild(el('div','row hint','SCORERS HIDDEN — TAP A MATCH TO REVEAL'));
+
+    // which local-calendar days actually have matches, for clamping nav
+    const dateKeys = [...new Set(dataset.matches.map(matchDateKey).filter(Boolean))].sort();
+    const today = todayReference();
+    const target = new Date(today);
+    target.setDate(target.getDate() + dayOffset);
+    const targetKey = localDateKey(target);
+
+    const nav = row('day-nav');
+    const prevBtn = el('button','day-arrow','◀');
+    const nextBtn = el('button','day-arrow','▶');
+    const label = el('span','day-label', dayLabel(dayOffset, target));
+    const atMin = !dateKeys.length || targetKey <= dateKeys[0];
+    const atMax = !dateKeys.length || targetKey >= dateKeys[dateKeys.length-1];
+    if(atMin) prevBtn.classList.add('disabled');
+    if(atMax) nextBtn.classList.add('disabled');
+    prevBtn.addEventListener('click', ()=>{ if(atMin) return; dayOffset--; renderModern(); });
+    nextBtn.addEventListener('click', ()=>{ if(atMax) return; dayOffset++; renderModern(); });
+    nav.appendChild(prevBtn); nav.appendChild(label); nav.appendChild(nextBtn);
+    screen.appendChild(nav);
+
+    const dayMatches = dataset.matches.filter(m => matchDateKey(m) === targetKey);
+
+    if(!dayMatches.length){
+      screen.appendChild(el('div','row hint','NO MATCHES THIS DAY'));
+    } else {
+      let lastGroup = null;
+      dayMatches.forEach((m,i)=>{
+        const key = 'd'+dayOffset+'-m'+i; // day-scoped key so expand state doesn't collide across days
+        if(m.group && m.group !== lastGroup){
+          screen.appendChild(el('div','section-title','GROUP '+m.group));
+          lastGroup = m.group;
+        }
+        screen.appendChild(matchRow(m,key,true));
+        if(expandedMatches[key]) scorerRows(m).forEach(r=>screen.appendChild(r));
+      });
+      screen.appendChild(el('div','row hint','SCORERS HIDDEN — TAP A MATCH TO REVEAL'));
+    }
     applyStagger(screen);
   }
 
@@ -558,7 +628,9 @@ const Data = (() => {
   function renderClassicPage(){
     const screen = document.getElementById('screen');
     screen.innerHTML='';
-    const pages = paginate(dataset.matches, 12);
+    const todayKey = localDateKey(todayReference());
+    const todaysMatches = dataset.matches.filter(m => matchDateKey(m) === todayKey);
+    const pages = paginate(todaysMatches, 12);
     if(!pages.length){ classicPaged=false; return renderScores(); }
     if(classicPageIdx >= pages.length) classicPageIdx = 0;
 
@@ -629,7 +701,8 @@ const Data = (() => {
     if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
     screen.innerHTML='';
     buildHeader(screen,'FIXTURES','304','UPCOMING');
-    const upcoming = dataset.matches.filter(m=>m.status==='TIMED'||m.status==='SCHEDULED');
+    const todayKey = localDateKey(todayReference());
+    const upcoming = dataset.matches.filter(m => matchDateKey(m) === todayKey && (m.status==='TIMED'||m.status==='SCHEDULED'));
     if(!upcoming.length){
       screen.appendChild(el('div','row hint','NO UPCOMING FIXTURES TODAY'));
     } else {
@@ -756,6 +829,7 @@ const Data = (() => {
     if(!renderers[n]) return;
     if(n!==302) clearClassicTimer();
     if(n!==305 && tickerTimer){ clearInterval(tickerTimer); tickerTimer=null; }
+    if(n===302) dayOffset = 0; // nav-button tap always returns to today; prev/next + periodic refresh bypass renderPage and preserve it
     currentPage=n; renderers[n]();
     document.querySelectorAll('.fb').forEach(b=>b.classList.toggle('active', +b.dataset.page===n));
     if(n===305 && !tickerTimer){
