@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="apple-mobile-web-app-title" content="302" />
+<meta name="theme-color" content="#000000" />
+<title>Page 302</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#000; --white:#fff; --red:#ff0000; --green:#00ff00;
+    --yellow:#ffff00; --blue:#0000ff; --magenta:#ff00ff; --cyan:#00ffff;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; min-height:100%; background:var(--black);
+    font-family:'VT323',ui-monospace,'Courier New',monospace;
+    -webkit-font-smoothing:none; color:var(--white);
+  }
+  body{
+    display:flex; flex-direction:column;
+    min-height:100vh; min-height:100dvh;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+
+  /* Screen */
+  #screen{
+    position:relative; flex:1 1 auto; overflow-y:auto; overflow-x:hidden;
+    padding:10px 12px 14px;
+    font-size:clamp(15px,4.6vw,20px); line-height:1.55;
+  }
+  #screen::after{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:repeating-linear-gradient(to bottom,
+      rgba(255,255,255,0) 0, rgba(255,255,255,0) 2px, rgba(0,0,0,0.16) 3px);
+  }
+
+  /* Header */
+  .header-bar{
+    display:flex; height:clamp(46px,14vw,60px); margin-bottom:8px;
+    gap:clamp(4px,1.5vw,10px); font-family:'Press Start 2P',monospace;
+  }
+  .ident{ display:flex; gap:clamp(4px,1.5vw,10px); flex:0 0 auto; height:100%; }
+  .ident-cell{
+    height:100%; aspect-ratio:1;
+    background:#fff; color:#000;
+    display:flex; align-items:center; justify-content:center;
+    font-size:clamp(18px,6vw,32px);
+  }
+  .channel-block{
+    flex:1 1 auto; background:#1300ff; color:#66ff44;
+    display:flex; align-items:center; justify-content:center;
+    font-size:clamp(16px,6.5vw,30px); letter-spacing:clamp(2px,1.2vw,8px);
+    white-space:nowrap; overflow:hidden;
+    text-shadow: 0.06em 0.06em 0 #1f6b00, 0.12em 0.12em 0 #1f6b00;
+  }
+  .sub-header{
+    display:flex; justify-content:space-between; align-items:baseline; gap:8px;
+    margin-bottom:8px; padding-bottom:6px; border-bottom:2px solid #2a2a2a;
+  }
+  .sub-title{ color:var(--green); letter-spacing:0.05em; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:5.5em; }
+  .sub-meta{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  .page-num{ background:var(--yellow); color:var(--black); font-weight:bold;
+    padding:1px 6px; letter-spacing:0.05em; }
+  .page-count{ color:var(--white); font-weight:bold; letter-spacing:0.05em; }
+  .clock{ color:var(--white); font-size:0.95em; letter-spacing:0.05em; white-space:nowrap; }
+
+  /* Rows */
+  .row{ display:flex; align-items:center; gap:6px; opacity:0;
+    animation:build .2s ease-out forwards; }
+  @keyframes build{ from{opacity:0;transform:translateY(-3px);} to{opacity:1;transform:translateY(0);} }
+  @media (prefers-reduced-motion:reduce){ .row{animation:none;opacity:1;} }
+
+  .section-title{ color:var(--cyan); margin:7px 0 2px; letter-spacing:0.06em; }
+  .section-title.alt{ color:var(--magenta); }
+  .divider{ height:2px; background:#2a2a2a; margin:6px 0; }
+
+  .match .team{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .match .score{ flex:0 0 auto; min-width:3.2em; text-align:center; color:var(--yellow); font-weight:bold; }
+  .match .status{ flex:0 0 auto; min-width:3em; text-align:right; }
+  .status-ft{ color:var(--green); }
+  .status-live{ color:var(--red); animation:flash 1s steps(2,start) infinite; }
+  .status-time{ color:var(--yellow); }
+  @media (prefers-reduced-motion:reduce){ .status-live{animation:none;} }
+  @keyframes flash{ 50%{opacity:.2;} }
+
+  .match.tappable{ cursor:pointer; }
+  .match.tappable .team:first-of-type::after{ content:' \25B8'; color:#666; font-size:.85em; }
+  .match.tappable.expanded .team:first-of-type::after{ content:' \25BE'; }
+  .scorers{ font-size:.82em; color:var(--white); }
+  .match-gap{ height:.5em; }
+
+  /* Table */
+  .table-row{ gap:4px; }
+  .table-row .pos{ width:1.7em; color:#888; }
+  .table-row .name{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .table-row .stat{ width:2.6em; text-align:right; }
+  .table-row .pts{ width:2.6em; text-align:right; color:var(--yellow); font-weight:bold; }
+  .table-row.head span{ color:var(--cyan); }
+  .table-divider{ display:block; height:2px; padding:0; margin:3px 0; }
+  .table-divider.auto{ background:var(--green); }
+  .table-divider.po{ background:var(--cyan); }
+  .table-divider.rel{ background:var(--red); }
+  .legend{ margin-top:8px; font-size:.74em; color:#999; flex-wrap:wrap; }
+  .legend-swatch{ display:inline-block; width:10px; height:10px; margin:0 4px 0 0; }
+  .legend-swatch.auto{ background:var(--green); }
+  .legend-swatch.po{ background:var(--cyan); margin-left:10px; }
+  .legend-swatch.rel{ background:var(--red); margin-left:10px; }
+
+  /* Fixtures */
+  .fixture-row .time{ width:3.6em; color:var(--yellow); flex:0 0 auto; }
+  .fixture-row .fixture{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* Index / nav */
+  .index-row{ gap:6px; }
+  .num-btn{ background:none; border:none; color:var(--yellow); font:inherit;
+    font-weight:bold; padding:0 1px; cursor:pointer; text-align:left; }
+  .num-btn:active{ color:var(--black); background:var(--yellow); }
+  .index-row .num-btn{ width:2.6em; }
+  .index-row .label{ color:var(--white); cursor:pointer; }
+  .hint{ color:#666; margin-top:8px; font-size:.92em; }
+  .hint-link{ color:#888; margin-top:10px; font-size:.9em; }
+  .nogamble{ color:var(--green); margin-top:10px; letter-spacing:0.04em; }
+
+  /* Toggle */
+  .toggle{ background:none; border:2px solid #444; color:var(--white); font:inherit;
+    font-size:.72em; padding:1px 5px; cursor:pointer; letter-spacing:0.03em; white-space:nowrap; flex:0 0 auto; }
+  .toggle .on{ color:var(--green); font-weight:bold; }
+  .toggle .off{ color:#666; }
+  .classic-meta{ display:flex; align-items:center; gap:8px; }
+
+  /* Loading / error */
+  .notice{ color:#888; text-align:center; margin-top:40px; letter-spacing:0.08em; }
+
+  /* Boot — CRT power-on */
+  .crt-stage{ position:absolute; inset:0; background:#000; overflow:hidden; z-index:10; }
+
+  /* the screen "content" that blooms open */
+  .crt-bloom{
+    position:absolute; left:0; right:0; top:50%;
+    height:100%; transform:translateY(-50%) scaleY(0.002) scaleX(1);
+    transform-origin:center center;
+    background:#0b0b0b;
+    box-shadow:0 0 60px 10px rgba(180,255,200,0.35);
+    animation:crtBloom 620ms cubic-bezier(.2,.8,.25,1) forwards;
+  }
+  @keyframes crtBloom{
+    0%   { transform:translateY(-50%) scaleY(0.002) scaleX(0.6); filter:brightness(3); }
+    18%  { transform:translateY(-50%) scaleY(0.004) scaleX(1);   filter:brightness(3); }   /* thin bright line */
+    55%  { transform:translateY(-50%) scaleY(1.06)  scaleX(1);   filter:brightness(1.7); }  /* overshoot open */
+    72%  { transform:translateY(-50%) scaleY(0.97)  scaleX(1);   filter:brightness(1.3); }  /* settle bounce */
+    100% { transform:translateY(-50%) scaleY(1)     scaleX(1);   filter:brightness(1); }
+  }
+
+  /* the white-hot horizontal scan line + centre dot */
+  .crt-line{
+    position:absolute; left:50%; top:50%; width:120%; height:3px;
+    transform:translate(-50%,-50%) scaleX(0.01);
+    background:#fff; box-shadow:0 0 18px 4px #fff, 0 0 40px 8px rgba(200,255,220,.7);
+    animation:crtLine 620ms ease-out forwards; z-index:12;
+  }
+  @keyframes crtLine{
+    0%   { transform:translate(-50%,-50%) scaleX(0.01); opacity:1; height:5px; }
+    14%  { transform:translate(-50%,-50%) scaleX(1);    opacity:1; height:3px; }  /* snap wide */
+    45%  { opacity:.9; }
+    100% { opacity:0; height:2px; }
+  }
+
+  /* centre flash dot at the very start */
+  .crt-dot{
+    position:absolute; left:50%; top:50%; width:14px; height:14px; border-radius:50%;
+    transform:translate(-50%,-50%) scale(0);
+    background:#fff; box-shadow:0 0 30px 12px #fff;
+    animation:crtDot 240ms ease-out forwards; z-index:13;
+  }
+  @keyframes crtDot{
+    0%{ transform:translate(-50%,-50%) scale(0); opacity:1; }
+    40%{ transform:translate(-50%,-50%) scale(1.4); opacity:1; }
+    100%{ transform:translate(-50%,-50%) scale(0.2); opacity:0; }
+  }
+
+  /* faint flicker overlay during warm-up */
+  .crt-flicker{
+    position:absolute; inset:0; background:rgba(255,255,255,0.04); z-index:11;
+    animation:crtFlicker 620ms steps(2,end) 2; pointer-events:none;
+  }
+  @keyframes crtFlicker{ 0%,100%{opacity:0;} 50%{opacity:.5;} }
+
+  .boot-noise{ position:absolute; inset:0; font-size:1em; line-height:1.3; word-break:break-all;
+    overflow:hidden; z-index:12; padding:6px; }
+  .boot-msg{ color:var(--cyan); text-align:center; margin-top:34vh; font-size:1.3em; letter-spacing:0.12em; }
+  .boot-bar{ margin:14px auto 0; width:78%; max-width:300px; height:14px; border:2px solid var(--cyan); padding:2px; position:relative; z-index:12; }
+  .boot-bar-fill{ height:100%; width:0; background:var(--cyan); transition:width .85s steps(20); }
+  @media (prefers-reduced-motion:reduce){
+    .crt-bloom,.crt-line,.crt-dot,.crt-flicker,.boot-bar-fill{ animation:none !important; transition:none !important; transform:translateY(-50%) scaleY(1) !important; }
+  }
+
+  /* Bottom controls */
+  .controls{ flex:0 0 auto; }
+  .fastext{ display:grid; grid-template-columns:repeat(5,1fr); }
+  .fb{ font-family:'VT323',monospace; font-size:clamp(14px,4vw,17px); padding:12px 4px;
+    border:none; font-weight:bold; letter-spacing:0.05em; cursor:pointer; }
+  .fb.red{ background:var(--red); color:#fff; }
+  .fb.green{ background:var(--green); color:#000; }
+  .fb.yellow{ background:var(--yellow); color:#000; }
+  .fb.blue{ background:var(--blue); color:#fff; }
+  .fb.magenta{ background:var(--magenta); color:#000; }
+  .fb.active{ box-shadow:inset 0 0 0 3px #fff; }
+  .toolbar{ display:flex; }
+  .share-btn{ flex:1; font-family:'VT323',monospace; font-size:clamp(14px,4vw,17px);
+    padding:11px 4px; border:none; background:#3a3a3a; color:#fff; font-weight:bold;
+    letter-spacing:0.06em; cursor:pointer; }
+  .share-btn:active{ background:#222; }
+
+  /* Ticker page */
+  .ticker-feed{ display:flex; flex-direction:column; gap:9px; }
+  .ticker-entry{ display:block; }
+  .ticker-meta{ color:#888; font-size:.85em; letter-spacing:0.04em; }
+  .ticker-text{ line-height:1.35; }
+  .p-label{ font-weight:bold; margin-right:3px; }
+  .p-ticker{ color:var(--white); } .p-react{ color:var(--yellow); }
+  .p-stats{ color:var(--cyan); } .p-pundit{ color:var(--green); }
+  .cursor{ display:inline-block; color:#fff; animation:blink .8s steps(2,start) infinite; }
+  @keyframes blink{ 50%{opacity:0;} }
+  @media (prefers-reduced-motion:reduce){ .cursor{animation:none;} }
+</style>
+</head>
+<body>
+  <div id="screen"><div class="notice">TUNING IN&hellip;</div></div>
+  <div class="controls">
+    <div class="fastext">
+      <button class="fb red"     data-page="301">301 INDEX</button>
+      <button class="fb green"   data-page="302">302 SCORES</button>
+      <button class="fb yellow"  data-page="303">303 TABLE</button>
+      <button class="fb blue"    data-page="304">304 FIX</button>
+      <button class="fb magenta" data-page="305">305 LIVE</button>
+    </div>
+    <div class="toolbar">
+      <button class="share-btn" id="shareBtn">SHARE THIS PAGE</button>
+    </div>
+  </div>
+
+<!-- html2canvas only used as a fallback for capturing the page image to share -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+/*
+ * data.js — Page 302 data layer
+ * -----------------------------------------------------------------------------
+ * This is the ONLY file that knows where match data comes from.
+ * Everything else in the app calls Data.getFeed() and doesn't care
+ * whether the data is mock or live.
+ *
+ * RIGHT NOW: returns mock WORLD CUP 2026 data (real fixtures for the current
+ * matchday) so the app works in your browser today with zero setup. Scores for
+ * finished games are real results; upcoming games show kickoff times (UK/BST).
+ *
+ * LATER (when you have a backend): replace the body of fetchLive() with a
+ * single fetch() to YOUR backend, which in turn calls football-data.org.
+ * Do NOT call football-data.org directly from the browser:
+ *   - it blocks browser (CORS) requests, and
+ *   - it would expose your API key to anyone who views source.
+ *
+ * Your backend should hit (World Cup competition code = WC):
+ *   GET https://api.football-data.org/v4/competitions/WC/matches
+ *   GET https://api.football-data.org/v4/competitions/WC/standings
+ *   header:  X-Auth-Token: <your key>
+ * ...then reshape into the { competition, subtitle, matches, table } shape
+ * below and serve it from e.g. GET https://your-backend/feed
+ *
+ * (Championship code is ELC — the app is league-agnostic, so to switch leagues
+ *  you only change this file.)
+ *
+ * football-data.org status values map like so:
+ *   SCHEDULED / TIMED -> upcoming (show kickoff time)
+ *   IN_PLAY           -> live
+ *   PAUSED            -> live (half-time)
+ *   FINISHED          -> FT
+ * -----------------------------------------------------------------------------
+ */
+
+const Data = (() => {
+  // ---- CONFIG -------------------------------------------------------------
+  const USE_LIVE = true;
+  const BACKEND_URL = 'https://page302-backend.onrender.com/feed';
+
+  // ---- MOCK DATA: WORLD CUP 2026, matchday around 14 June ------------------
+  // Times are UK time (BST). Finished scores are real results.
+  function mockWorldCup() {
+    return {
+      competition: 'WORLD CUP',
+      subtitle: 'GROUP STAGE',
+      matches: [
+        { home: 'HAITI',        away: 'SCOTLAND', hs: 0, as: 1, status: 'FINISHED', group: 'C',
+          scorers: { home: [], away: ['MCTOMINAY 57'] } },
+        { home: 'AUSTRALIA',    away: 'TURKIYE',  hs: 2, as: 0, status: 'FINISHED', group: 'D',
+          scorers: { home: ['DUKE 31', 'IRVINE 66'], away: [] } },
+        { home: 'GERMANY',      away: 'CURACAO',  hs: 0, as: 0, status: 'IN_PLAY', minute: 38, group: 'E',
+          scorers: { home: [], away: [] } },
+        { home: 'NETHERLANDS',  away: 'JAPAN',    hs: 0, as: 0, status: 'TIMED', kickoff: '20:00', group: 'F' },
+        { home: 'COTE DIVOIRE', away: 'ECUADOR',  hs: 0, as: 0, status: 'TIMED', kickoff: '23:00', group: 'E' }
+      ],
+      table: [
+        { group: 'C', name: 'SCOTLAND',     p: 1, gd: '+1', pts: 3 },
+        { group: 'C', name: 'BRAZIL',       p: 1, gd: '0',  pts: 1 },
+        { group: 'C', name: 'MOROCCO',      p: 1, gd: '0',  pts: 1 },
+        { group: 'C', name: 'HAITI',        p: 1, gd: '-1', pts: 0 },
+        { group: 'D', name: 'USA',          p: 1, gd: '+3', pts: 3 },
+        { group: 'D', name: 'AUSTRALIA',    p: 1, gd: '+2', pts: 3 },
+        { group: 'D', name: 'PARAGUAY',     p: 1, gd: '-3', pts: 0 },
+        { group: 'D', name: 'TURKIYE',      p: 1, gd: '-2', pts: 0 },
+        { group: 'E', name: 'GERMANY',      p: 0, gd: '0',  pts: 0 },
+        { group: 'E', name: 'CURACAO',      p: 0, gd: '0',  pts: 0 },
+        { group: 'E', name: 'COTE DIVOIRE', p: 0, gd: '0',  pts: 0 },
+        { group: 'E', name: 'ECUADOR',      p: 0, gd: '0',  pts: 0 }
+      ]
+    };
+  }
+
+  // ---- LIVE FETCH (wire up later) ----------------------------------------
+  async function fetchLive() {
+    // Free-tier hosts (e.g. Render) can take 30-50s to wake from sleep.
+    // Don't let that hang the UI — time out and fall back to mock instead.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(BACKEND_URL, { headers: { 'Accept': 'application/json' }, signal: controller.signal });
+      if (!res.ok) throw new Error('backend ' + res.status);
+      return await res.json(); // must match { competition, subtitle, matches, table }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // ---- PUBLIC API ---------------------------------------------------------
+  async function getFeed() {
+    if (USE_LIVE) {
+      try { return await fetchLive(); }
+      catch (e) { console.warn('live fetch failed, falling back to mock:', e); return mockWorldCup(); }
+    }
+    await new Promise((r) => setTimeout(r, 250));
+    return mockWorldCup();
+  }
+
+  return { getFeed, USE_LIVE };
+})();
+
+</script>
+<script>
+  // ---------- state ----------
+  let currentPage = 302;
+  let classicMode = false;
+  const expandedMatches = {};
+  let classicPaged = false;       // false = league picker, true = showing pages
+  let classicPageIdx = 0;
+  let classicTimer = null;
+
+  let dataset = null;             // loaded from Data layer
+  let loadError = false;
+
+  // ---------- helpers ----------
+  function el(tag, cls, html){
+    const e = document.createElement(tag);
+    if(cls) e.className = cls;
+    if(html !== undefined) e.innerHTML = html;
+    return e;
+  }
+  function row(cls){ return el('div', 'row ' + (cls||'')); }
+  function clockString(){
+    const d = new Date(), p = n => String(n).padStart(2,'0');
+    return p(d.getHours())+':'+p(d.getMinutes());
+  }
+
+  // Shrinks a single-line element's font-size until its content fits its box.
+  // Run live (not via fixed clamp values) because webfont metrics for
+  // 'Press Start 2P' render slightly differently across browsers (notably
+  // Safari vs Chromium), so a fixed size that fits in one can clip in another.
+  function fitToWidth(elBox){
+    elBox.style.fontSize = '';
+    let size = parseFloat(getComputedStyle(elBox).fontSize);
+    let guard = 0;
+    while(elBox.scrollWidth > elBox.clientWidth + 1 && size > 11 && guard < 60){
+      size -= 0.5;
+      elBox.style.fontSize = size + 'px';
+      guard++;
+    }
+  }
+
+  function buildHeader(screen, channel, pageNum, subTitle, extraMeta){
+    const bar = el('div','header-bar');
+    const ident = el('div','ident');
+    ['3','0','2'].forEach(c => ident.appendChild(el('span','ident-cell', c)));
+    bar.appendChild(ident);
+    const chBlock = el('div','channel-block', channel);
+    bar.appendChild(chBlock);
+    screen.appendChild(bar);
+    fitToWidth(chBlock);
+    // Re-check once the real webfont has finished loading (first render may
+    // have measured against the fallback font).
+    if(document.fonts && document.fonts.ready){
+      document.fonts.ready.then(()=>fitToWidth(chBlock));
+    }
+    const sub = el('div','sub-header');
+    sub.appendChild(el('span','sub-title', subTitle));
+    const meta = el('div','sub-meta');
+    if(extraMeta) meta.appendChild(extraMeta);
+    meta.appendChild(el('span','page-num', pageNum));
+    meta.appendChild(el('span','clock', clockString()));
+    sub.appendChild(meta);
+    screen.appendChild(sub);
+  }
+
+  function statusCell(m){
+    if(m.status === 'IN_PLAY' || m.status === 'PAUSED')
+      return el('span','status status-live', (m.minute != null ? m.minute+"'" : 'LIVE'));
+    if(m.status === 'FINISHED')
+      return el('span','status status-ft', 'FT');
+    return el('span','status status-time', m.kickoff || '');
+  }
+
+  function hasScorers(m){
+    return m.scorers && ((m.scorers.home||[]).length || (m.scorers.away||[]).length);
+  }
+
+  function matchRow(m, key, tappable){
+    const r = row('match');
+    if(key) r.id = key;
+    const upcoming = m.status === 'TIMED' || m.status === 'SCHEDULED';
+    r.appendChild(el('span','team', m.home));
+    r.appendChild(el('span','score', upcoming ? 'v' : (m.hs+'-'+m.as)));
+    r.appendChild(el('span','team', m.away));
+    r.appendChild(statusCell(m));
+    if(tappable && hasScorers(m)){
+      r.classList.add('tappable');
+      if(expandedMatches[key]) r.classList.add('expanded');
+      r.addEventListener('click', () => { expandedMatches[key] = !expandedMatches[key]; renderScores(); });
+    }
+    return r;
+  }
+
+  function scorerRows(m){
+    const out = [];
+    const h = (m.scorers && m.scorers.home) || [];
+    const a = (m.scorers && m.scorers.away) || [];
+    for(let i=0;i<Math.max(h.length,a.length);i++){
+      const r = row('match scorers');
+      r.appendChild(el('span','team', h[i]||''));
+      r.appendChild(el('span','score',''));
+      r.appendChild(el('span','team', a[i]||''));
+      r.appendChild(el('span','status',''));
+      out.push(r);
+    }
+    return out;
+  }
+
+  function matchRowCount(m){
+    const h=(m.scorers&&m.scorers.home)||[], a=(m.scorers&&m.scorers.away)||[];
+    return 1 + Math.max(h.length,a.length);
+  }
+  function paginate(matches, rowsPerPage){
+    const sorted = matches.slice().sort((a,b)=>a.home.localeCompare(b.home));
+    const pages=[]; let cur=[], used=0;
+    sorted.forEach(m=>{
+      const cost=matchRowCount(m)+1;
+      if(used+cost>rowsPerPage && cur.length){ pages.push(cur); cur=[]; used=0; }
+      cur.push(m); used+=cost;
+    });
+    if(cur.length) pages.push(cur);
+    return pages;
+  }
+
+  function applyStagger(screen){
+    screen.querySelectorAll('.row').forEach((r,i)=>{ r.style.animationDelay=(i*40)+'ms'; });
+  }
+  function clearClassicTimer(){ if(classicTimer){ clearInterval(classicTimer); classicTimer=null; } }
+
+  // ---------- pages ----------
+  function renderScores(){
+    clearClassicTimer();
+    const screen = document.getElementById('screen');
+    if(loadError){ screen.innerHTML='<div class="notice">NO SIGNAL — DATA UNAVAILABLE</div>'; return; }
+    if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
+
+    if(classicMode){
+      if(!classicPaged) return renderClassicPicker();
+      return renderClassicPage();
+    }
+    renderModern();
+  }
+
+  function buildToggle(){
+    const btn = el('button','toggle');
+    const paint = ()=>{ btn.innerHTML = 'CLASSIC <span class="'+(classicMode?'on':'off')+'">'+(classicMode?'ON':'OFF')+'</span>'; };
+    paint();
+    btn.addEventListener('click', async ()=>{
+      classicMode = !classicMode; classicPaged=false; classicPageIdx=0;
+      try{ await persist('classicMode', classicMode?'1':'0'); }catch(e){}
+      renderScores();
+    });
+    return btn;
+  }
+
+  function renderModern(){
+    const screen = document.getElementById('screen');
+    screen.innerHTML='';
+    buildHeader(screen,'FOOTBALL','302', dataset.competition, buildToggle());
+    let lastGroup = null;
+    dataset.matches.forEach((m,i)=>{
+      const key='m'+i;
+      if(m.group && m.group !== lastGroup){
+        screen.appendChild(el('div','section-title','GROUP '+m.group));
+        lastGroup = m.group;
+      }
+      screen.appendChild(matchRow(m,key,true));
+      if(expandedMatches[key]) scorerRows(m).forEach(r=>screen.appendChild(r));
+    });
+    screen.appendChild(el('div','row hint','SCORERS HIDDEN — TAP A MATCH TO REVEAL'));
+    applyStagger(screen);
+  }
+
+  function renderClassicPicker(){
+    const screen = document.getElementById('screen');
+    screen.innerHTML='';
+    buildHeader(screen,'FOOTBALL','302','SELECT LEAGUE', buildToggle());
+    const r = row('index-row');
+    const b = el('button','num-btn','▸');
+    const go = ()=>{ classicPaged=true; classicPageIdx=0; renderScores(); };
+    b.addEventListener('click',go);
+    const lab = el('span','label', dataset.competition); lab.addEventListener('click',go);
+    r.appendChild(b); r.appendChild(lab);
+    screen.appendChild(r);
+    screen.appendChild(el('div','row hint','MORE LEAGUES COMING SOON'));
+    screen.appendChild(el('div','row hint','CLASSIC MODE — PAGES AUTO-CYCLE LIKE CEEFAX'));
+    applyStagger(screen);
+  }
+
+  function renderClassicPage(){
+    const screen = document.getElementById('screen');
+    screen.innerHTML='';
+    const pages = paginate(dataset.matches, 12);
+    if(!pages.length){ classicPaged=false; return renderScores(); }
+    if(classicPageIdx >= pages.length) classicPageIdx = 0;
+
+    const meta = el('div','classic-meta');
+    meta.appendChild(el('span','page-count',(classicPageIdx+1)+'/'+pages.length));
+    meta.appendChild(buildToggle());
+    buildHeader(screen,'FOOTBALL','302', dataset.competition, meta);
+
+    pages[classicPageIdx].forEach(m=>{
+      screen.appendChild(matchRow(m,null,false));
+      scorerRows(m).forEach(r=>screen.appendChild(r));
+      screen.appendChild(el('div','match-gap'));
+    });
+
+    const back = row('hint-link');
+    const bb = el('button','num-btn','◂');
+    bb.addEventListener('click',()=>{ classicPaged=false; renderScores(); });
+    back.appendChild(bb); back.appendChild(document.createTextNode(' BACK TO LEAGUES'));
+    screen.appendChild(back);
+    applyStagger(screen);
+
+    clearClassicTimer();
+    if(pages.length>1){
+      classicTimer = setInterval(()=>{ classicPageIdx=(classicPageIdx+1)%pages.length; renderClassicPage(); }, 6000);
+    }
+  }
+
+  function renderTable(){
+    clearClassicTimer();
+    const screen = document.getElementById('screen');
+    if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
+    screen.innerHTML='';
+    buildHeader(screen,'TABLES','303','GROUP STANDINGS');
+
+    // group rows by their group letter; within each, top 2 marked as qualifying
+    const groups = {};
+    dataset.table.forEach(t=>{ (groups[t.group||'-'] = groups[t.group||'-'] || []).push(t); });
+
+    Object.keys(groups).sort().forEach(g=>{
+      screen.appendChild(el('div','section-title','GROUP '+g));
+      const head = row('table-row head');
+      ['pos|','name|TEAM','stat|P','stat|GD','pts|PTS'].forEach(s=>{
+        const [c,t]=s.split('|'); head.appendChild(el('span',c,t));
+      });
+      screen.appendChild(head);
+      groups[g].forEach((t,idx)=>{
+        if(idx===2) screen.appendChild(el('div','row table-divider auto')); // line under top 2
+        const r = row('table-row');
+        r.appendChild(el('span','pos', idx+1));
+        r.appendChild(el('span','name', t.name));
+        r.appendChild(el('span','stat', t.p));
+        r.appendChild(el('span','stat', t.gd));
+        r.appendChild(el('span','pts', t.pts));
+        screen.appendChild(r);
+      });
+    });
+
+    const lg = row('legend');
+    lg.appendChild(el('span','legend-swatch auto'));
+    lg.appendChild(el('span','','TOP 2 QUALIFY (+ BEST THIRDS)'));
+    screen.appendChild(lg);
+    applyStagger(screen);
+  }
+
+  function renderFixtures(){
+    clearClassicTimer();
+    const screen = document.getElementById('screen');
+    if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
+    screen.innerHTML='';
+    buildHeader(screen,'FIXTURES','304','UPCOMING');
+    const upcoming = dataset.matches.filter(m=>m.status==='TIMED'||m.status==='SCHEDULED');
+    if(!upcoming.length){
+      screen.appendChild(el('div','row hint','NO UPCOMING FIXTURES TODAY'));
+    } else {
+      upcoming.forEach(f=>{
+        const r = row('fixture-row');
+        r.appendChild(el('span','time', f.kickoff||''));
+        r.appendChild(el('span','fixture', f.home+' v '+f.away));
+        screen.appendChild(r);
+      });
+    }
+    applyStagger(screen);
+  }
+
+  // ---- live ticker (mock AI commentary, on-brand vidiprinter) ----
+  const personaInfo = {
+    ticker:{label:'TICKER',cls:'p-ticker'}, react:{label:'REACT',cls:'p-react'},
+    stats:{label:'STATS',cls:'p-stats'}, pundit:{label:'PUNDIT',cls:'p-pundit'}
+  };
+  let tickerEntries = [
+    { min:"57'", ctx:'HAI 0-1 SCO', persona:'react',  text:'MCTOMINAY! SCOTLAND LEAD AT A WORLD CUP — SCENES IN BOSTON' },
+    { min:"45'", ctx:'AUS 2-0 TUR', persona:'stats',  text:'AUSTRALIA UNBEATEN IN THEIR LAST FIVE GROUP GAMES' },
+    { min:"38'", ctx:'GER 0-0 CUW', persona:'pundit', text:'CURACAO FRUSTRATING GERMANY — THE SMALLEST NATION EVER AT A WORLD CUP' }
+  ];
+  const tickerQueue = [
+    { min:"66'", ctx:'AUS 2-0 TUR', persona:'ticker', text:'GOAL - IRVINE DOUBLES AUSTRALIA\u2019S LEAD' },
+    { min:"66'", ctx:'AUS 2-0 TUR', persona:'react',  text:'THE SOCCEROOS ARE CRUISING! DREAM START TO THE GROUP' },
+    { min:"71'", ctx:'GER 1-0 CUW', persona:'ticker', text:'GOAL - GERMANY FINALLY BREAK THROUGH' },
+    { min:"72'", ctx:'GER 1-0 CUW', persona:'stats',  text:'GERMANY HAD 18 SHOTS BEFORE THAT GOAL ARRIVED' },
+    { min:"90'", ctx:'HAI 0-1 SCO', persona:'pundit', text:'SCOTLAND SEE IT OUT — A HISTORIC THREE POINTS' }
+  ];
+  let tickerQIdx = 0;
+  const TICKER_CAP = 5;
+  let tickerTimer = null;
+
+  function typeText(target, text, speed){
+    target.textContent=' ';
+    const cur = el('span','cursor','&#9612;');
+    target.parentElement.appendChild(cur);
+    let i=0;
+    const iv=setInterval(()=>{ target.textContent+=text[i++]; if(i>=text.length){clearInterval(iv);cur.remove();} }, speed);
+  }
+  function tickerEntryEl(entry, animate){
+    const w = row('ticker-entry'+(animate?' entry-new':''));
+    w.appendChild(el('div','ticker-meta', entry.min+'  '+entry.ctx));
+    const line = el('div','ticker-text');
+    const info = personaInfo[entry.persona];
+    line.appendChild(el('span','p-label '+info.cls,'['+info.label+']'));
+    const body = el('span','ticker-body '+info.cls);
+    line.appendChild(body); w.appendChild(line);
+    if(animate) typeText(body, entry.text, 26); else body.textContent=' '+entry.text;
+    return w;
+  }
+  function renderTicker(){
+    clearClassicTimer();
+    const screen = document.getElementById('screen');
+    screen.innerHTML='';
+    buildHeader(screen,'TICKER','305','LIVE COMMENTARY');
+    const feed = el('div','ticker-feed'); feed.id='ticker-feed';
+    tickerEntries.forEach(e=>feed.appendChild(tickerEntryEl(e,false)));
+    screen.appendChild(feed);
+    applyStagger(screen);
+  }
+
+  function renderIndex(){
+    clearClassicTimer();
+    const screen = document.getElementById('screen');
+    screen.innerHTML='';
+    buildHeader(screen,'INDEX','301','SPORT INDEX');
+    [['301','THIS INDEX'],['302','LIVE SCORES'],['303','LEAGUE TABLE'],['304','FIXTURES'],['305','LIVE TICKER']]
+    .forEach(([n,l])=>{
+      const r = row('index-row');
+      const b = el('button','num-btn',n); b.addEventListener('click',()=>renderPage(+n));
+      const lab = el('span','label',l); lab.addEventListener('click',()=>renderPage(+n));
+      r.appendChild(b); r.appendChild(lab); screen.appendChild(r);
+    });
+    screen.appendChild(el('div','row nogamble','NO GAMBLING ADS. EVER.'));
+    const rr = row('index-row');
+    const rb = el('button','num-btn','▶'); rb.addEventListener('click',()=>playBoot(()=>renderPage(302)));
+    rr.appendChild(rb); rr.appendChild(el('span','label','REPLAY TUNING-IN'));
+    screen.appendChild(rr);
+    applyStagger(screen);
+  }
+
+  // ---------- boot: CRT power-on ----------
+  function playBoot(done){
+    const screen = document.getElementById('screen');
+    const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    if(reduce){ done(); return; }
+
+    screen.innerHTML='';
+    const stage = el('div','crt-stage');
+    const bloom = el('div','crt-bloom');
+    const line  = el('div','crt-line');
+    const dot   = el('div','crt-dot');
+    const flick = el('div','crt-flicker');
+    stage.appendChild(bloom); stage.appendChild(line); stage.appendChild(dot); stage.appendChild(flick);
+    screen.appendChild(stage);
+
+    // Phase 1 (0–620ms): tube warms up — dot flash, line snaps wide, screen blooms open.
+    // Phase 2 (~620ms): brief colour static as the "signal" tunes in.
+    setTimeout(()=>{
+      const noise = el('div','boot-noise'); stage.appendChild(noise);
+      const chars='#%&@*+=-_|/\\.:', cols=['var(--red)','var(--green)','var(--yellow)','var(--blue)','var(--magenta)','var(--cyan)','var(--white)'];
+      const nz=setInterval(()=>{
+        let o=''; for(let i=0;i<170;i++) o+='<span style="color:'+cols[Math.floor(Math.random()*cols.length)]+'">'+chars[Math.floor(Math.random()*chars.length)]+'</span>';
+        noise.innerHTML=o;
+      },60);
+
+      // Phase 3: static clears, "RETRIEVING" with the loading bar.
+      setTimeout(()=>{
+        clearInterval(nz);
+        stage.innerHTML='';
+        stage.appendChild(el('div','boot-msg','RETRIEVING PAGE 302'));
+        const bar=el('div','boot-bar'), fill=el('div','boot-bar-fill'); bar.appendChild(fill); stage.appendChild(bar);
+        requestAnimationFrame(()=>fill.style.width='100%');
+        setTimeout(done, 950);
+      },420);
+    },640);
+  }
+
+  // ---------- routing ----------
+  const renderers = { 301:renderIndex, 302:renderScores, 303:renderTable, 304:renderFixtures, 305:renderTicker };
+  function renderPage(n){
+    if(!renderers[n]) return;
+    if(n!==302) clearClassicTimer();
+    if(n!==305 && tickerTimer){ clearInterval(tickerTimer); tickerTimer=null; }
+    currentPage=n; renderers[n]();
+    document.querySelectorAll('.fb').forEach(b=>b.classList.toggle('active', +b.dataset.page===n));
+    if(n===305 && !tickerTimer){
+      tickerTimer=setInterval(()=>{
+        if(currentPage!==305) return;
+        const feed=document.getElementById('ticker-feed'); if(!feed) return;
+        const e=tickerQueue[tickerQIdx++ % tickerQueue.length];
+        feed.insertBefore(tickerEntryEl(e,true), feed.firstChild);
+        tickerEntries.unshift(e);
+        while(feed.children.length>TICKER_CAP){ feed.removeChild(feed.lastChild); tickerEntries.pop(); }
+      },6500);
+    }
+  }
+
+  document.querySelectorAll('.fb').forEach(b=>b.addEventListener('click',()=>renderPage(+b.dataset.page)));
+
+  // live clock
+  setInterval(()=>{ const c=document.querySelector('.clock'); if(c) c.textContent=clockString(); },1000);
+
+  // gentle live-match simulation (mock mode only): ticks the clock forward and
+  // occasionally scores, so a live match visibly moves while you're showing it off.
+  // Modern endless-scroll view only — classic mode re-renders on its own cycle.
+  // Disabled entirely once USE_LIVE=true — real scores must never be overwritten
+  // by fake increments (the 60s refresh would then fight with this every 5s).
+  setInterval(()=>{
+    if(Data.USE_LIVE || !dataset || currentPage!==302 || classicMode) return;
+    dataset.matches.forEach((m,i)=>{
+      if(m.status!=='IN_PLAY' && m.status!=='PAUSED') return;
+      const rowEl = document.getElementById('m'+i);
+      if(!rowEl) return;
+
+      let scored = false;
+      if(Math.random() < 0.18){
+        if(Math.random() < 0.5) m.hs++; else m.as++;
+        scored = true;
+      }
+      m.minute = Math.min(90, (m.minute||0) + 1);
+      if(m.minute >= 90) m.status = 'FINISHED';
+
+      const scoreEl = rowEl.querySelector('.score');
+      const statusEl = rowEl.querySelector('.status');
+      if(scoreEl) scoreEl.textContent = m.hs + '-' + m.as;
+      if(statusEl){
+        if(m.status === 'FINISHED'){
+          statusEl.textContent = 'FT';
+          statusEl.className = 'status status-ft';
+        } else {
+          statusEl.textContent = m.minute + "'";
+          statusEl.className = 'status status-live';
+        }
+      }
+      if(scored){
+        const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        if(!reduce){
+          rowEl.style.transition = 'none';
+          rowEl.style.background = 'var(--white)';
+          requestAnimationFrame(()=>{
+            rowEl.style.transition = 'background 900ms ease-out';
+            rowEl.style.background = 'transparent';
+          });
+        }
+      }
+    });
+  }, 5000);
+
+  // ---------- share (native share sheet) ----------
+  document.getElementById('shareBtn').addEventListener('click', async ()=>{
+    const screen = document.getElementById('screen');
+    const btn = document.getElementById('shareBtn');
+    const original = btn.textContent;
+    const reset = (label, delay)=>{ btn.textContent=label; setTimeout(()=>{ btn.textContent=original; }, delay||1600); };
+
+    if(typeof html2canvas !== 'function'){
+      reset('SHARE UNAVAILABLE (NO CONNECTION?)');
+      return;
+    }
+
+    btn.textContent='CAPTURING…';
+    try{
+      const canvas = await html2canvas(screen,{ backgroundColor:'#000', scale:2 });
+      const blob = await new Promise(res=>canvas.toBlob(res,'image/png'));
+      const file = new File([blob], 'page-'+currentPage+'.png', { type:'image/png' });
+      // Native share sheet if supported (iOS Safari supports file share)
+      if(navigator.canShare && navigator.canShare({ files:[file] })){
+        try{
+          await navigator.share({ files:[file], title:'Page '+currentPage, text:'via Page 302' });
+          reset('SHARED ✓');
+        }catch(shareErr){
+          if(shareErr && shareErr.name === 'AbortError'){
+            btn.textContent = original; // user cancelled the share sheet — not an error
+          } else {
+            reset('SHARE FAILED — TRY AGAIN');
+          }
+        }
+      } else {
+        // fallback: download / open image
+        const a=document.createElement('a');
+        a.href=canvas.toDataURL('image/png'); a.download='page-'+currentPage+'.png'; a.click();
+        reset('SAVED — CHECK PHOTOS/FILES');
+      }
+    }catch(e){
+      console.warn('share capture failed', e);
+      reset('COULD NOT CAPTURE PAGE');
+    }
+  });
+
+  // ---------- persistence (localStorage; swappable later) ----------
+  async function persist(k,v){ try{ localStorage.setItem('p302_'+k, v); }catch(e){} }
+  function readPersist(k){ try{ return localStorage.getItem('p302_'+k); }catch(e){ return null; } }
+
+  // ---------- startup ----------
+  async function start(){
+    // restore prefs
+    if(readPersist('classicMode')==='1') classicMode = true;
+
+    // load data — defensively, so nothing here can kill the app
+    try{
+      if(typeof Data !== 'undefined' && Data.getFeed){
+        dataset = await Data.getFeed();
+      } else {
+        loadError = true;
+      }
+    }catch(e){ console.warn('data load failed', e); loadError = true; }
+
+    // boot sequence: first open of the day, only if nothing currently live.
+    // (During the World Cup, live games will usually skip the boot by design —
+    //  use the REPLAY TUNING-IN button on page 301 to watch it any time.)
+    let anyLive = false;
+    try{ anyLive = !!(dataset && dataset.matches && dataset.matches.some(m=>m.status==='IN_PLAY'||m.status==='PAUSED')); }catch(e){}
+    const today = new Date().toLocaleDateString();
+    const lastBoot = readPersist('lastBoot');
+    const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    if(!reduce && !anyLive && lastBoot!==today){
+      try{ persist('lastBoot', today); }catch(e){}
+      playBoot(()=>renderPage(302));
+    } else {
+      renderPage(302);
+    }
+
+    // periodic refresh (every 60s) — in mock mode this just re-renders
+    setInterval(async ()=>{
+      try{
+        if(typeof Data==='undefined' || !Data.getFeed) return;
+        const fresh = await Data.getFeed();
+        if(fresh){ dataset = fresh; loadError=false; if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
+      }catch(e){}
+    }, 60000);
+  }
+
+  // Last-resort guard: if anything above throws, at least show a message.
+  try{ start(); }
+  catch(e){
+    console.error('startup error', e);
+    const s=document.getElementById('screen');
+    if(s) s.innerHTML='<div class="notice">STARTUP ERROR — PULL TO REFRESH</div>';
+  }
+
+  // register service worker for installability — only over http(s), never file://
+  if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
+    window.addEventListener('load', ()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  }
+</script>
+</body>
+</html>
