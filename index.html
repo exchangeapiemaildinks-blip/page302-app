@@ -205,7 +205,7 @@
 
   /* Bottom controls */
   .controls{ flex:0 0 auto; }
-  .fastext{ display:grid; grid-template-columns:repeat(5,1fr); }
+  .fastext{ display:grid; grid-template-columns:repeat(4,1fr); }
   .fb{ font-family:'VT323',monospace; font-size:clamp(14px,4vw,17px); padding:12px 4px;
     border:none; font-weight:bold; letter-spacing:0.05em; cursor:pointer; }
   .fb.red{ background:var(--red); color:#fff; }
@@ -237,12 +237,14 @@
   <div id="screen"><div class="notice">TUNING IN&hellip;</div></div>
   <div class="controls">
     <div class="fastext">
-      <button class="fb red"     data-page="301">301 INDEX</button>
-      <button class="fb green"   data-page="302">302 SCORES</button>
-      <button class="fb yellow"  data-page="303">303 TABLE</button>
-      <button class="fb blue"    data-page="304">304 FIX</button>
-      <button class="fb magenta" data-page="305">305 LIVE</button>
+      <button class="fb red"    data-page="301">301 INDEX</button>
+      <button class="fb green"  data-page="302">302 SCORES</button>
+      <button class="fb yellow" data-page="303">303 TABLE</button>
+      <button class="fb blue"   data-page="304">304 FIX</button>
     </div>
+    <!-- 305 LIVE TICKER parked for tonight: currently hardcoded/fictional
+         commentary, jarring next to real scores. renderTicker() and the
+         305 styles/colours (magenta) are left intact below for the rework. -->
     <div class="toolbar">
       <button class="share-btn" id="shareBtn">SHARE THIS PAGE</button>
     </div>
@@ -425,10 +427,6 @@ const Data = (() => {
     return el('span','status status-time', m.kickoff || '');
   }
 
-  function hasScorers(m){
-    return m.scorers && ((m.scorers.home||[]).length || (m.scorers.away||[]).length);
-  }
-
   function matchRow(m, key, tappable){
     const r = row('match');
     if(key) r.id = key;
@@ -437,7 +435,7 @@ const Data = (() => {
     r.appendChild(el('span','score', upcoming ? 'v' : (m.hs+'-'+m.as)));
     r.appendChild(el('span','team', m.away));
     r.appendChild(statusCell(m));
-    if(tappable && hasScorers(m)){
+    if(tappable){
       r.classList.add('tappable');
       if(expandedMatches[key]) r.classList.add('expanded');
       r.addEventListener('click', () => { expandedMatches[key] = !expandedMatches[key]; renderScores(); });
@@ -449,6 +447,10 @@ const Data = (() => {
     const out = [];
     const h = (m.scorers && m.scorers.home) || [];
     const a = (m.scorers && m.scorers.away) || [];
+    if(h.length===0 && a.length===0){
+      out.push(el('div','row hint scorers-empty', 'NO SCORER DATA AVAILABLE'));
+      return out;
+    }
     for(let i=0;i<Math.max(h.length,a.length);i++){
       const r = row('match scorers');
       r.appendChild(el('span','team', h[i]||''));
@@ -684,7 +686,7 @@ const Data = (() => {
     const screen = document.getElementById('screen');
     screen.innerHTML='';
     buildHeader(screen,'INDEX','301','SPORT INDEX');
-    [['301','THIS INDEX'],['302','LIVE SCORES'],['303','LEAGUE TABLE'],['304','FIXTURES'],['305','LIVE TICKER']]
+    [['301','THIS INDEX'],['302','LIVE SCORES'],['303','LEAGUE TABLE'],['304','FIXTURES']]
     .forEach(([n,l])=>{
       const r = row('index-row');
       const b = el('button','num-btn',n); b.addEventListener('click',()=>renderPage(+n));
