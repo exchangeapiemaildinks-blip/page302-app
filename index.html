@@ -306,8 +306,8 @@ const Data = (() => {
           scorers: { home: ['DUKE 31', 'IRVINE 66'], away: [] } },
         { home: 'GERMANY',      away: 'CURACAO',  hs: 0, as: 0, status: 'IN_PLAY', minute: 38, group: 'E',
           scorers: { home: [], away: [] } },
-        { home: 'NETHERLANDS',  away: 'JAPAN',    hs: 0, as: 0, status: 'TIMED', kickoff: '20:00', group: 'F' },
-        { home: 'COTE DIVOIRE', away: 'ECUADOR',  hs: 0, as: 0, status: 'TIMED', kickoff: '23:00', group: 'E' }
+        { home: 'NETHERLANDS',  away: 'JAPAN',    hs: 0, as: 0, status: 'TIMED', kickoff: '2026-06-14T19:00:00Z', group: 'F' },
+        { home: 'COTE DIVOIRE', away: 'ECUADOR',  hs: 0, as: 0, status: 'TIMED', kickoff: '2026-06-14T22:00:00Z', group: 'E' }
       ],
       table: [
         { group: 'C', name: 'SCOTLAND',     p: 1, gd: '+1', pts: 3 },
@@ -380,6 +380,18 @@ const Data = (() => {
     return p(d.getHours())+':'+p(d.getMinutes());
   }
 
+  // m.kickoff is a UTC ISO timestamp - format in *this device's* local
+  // timezone/24h style, so it's always correct regardless of where the
+  // viewer is. Falls back to the raw value if it's not a parseable date
+  // (e.g. older mock data still using a bare "HH:MM" string).
+  function formatKickoff(kickoff){
+    if(!kickoff) return '';
+    const d = new Date(kickoff);
+    if(isNaN(d.getTime())) return kickoff;
+    const p = n => String(n).padStart(2,'0');
+    return p(d.getHours())+':'+p(d.getMinutes());
+  }
+
   // Shrinks a single-line element's font-size until its content fits its box.
   // Run live (not via fixed clamp values) because webfont metrics for
   // 'Press Start 2P' render slightly differently across browsers (notably
@@ -424,7 +436,7 @@ const Data = (() => {
       return el('span','status status-live', (m.minute != null ? m.minute+"'" : 'LIVE'));
     if(m.status === 'FINISHED')
       return el('span','status status-ft', 'FT');
-    return el('span','status status-time', m.kickoff || '');
+    return el('span','status status-time', formatKickoff(m.kickoff));
   }
 
   function matchRow(m, key, tappable){
@@ -623,7 +635,7 @@ const Data = (() => {
     } else {
       upcoming.forEach(f=>{
         const r = row('fixture-row');
-        r.appendChild(el('span','time', f.kickoff||''));
+        r.appendChild(el('span','time', formatKickoff(f.kickoff)));
         r.appendChild(el('span','fixture', f.home+' v '+f.away));
         screen.appendChild(r);
       });
