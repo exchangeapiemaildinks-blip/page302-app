@@ -92,7 +92,8 @@
   .day-arrow.disabled{ color:#333; border-color:#222; cursor:default; }
   .day-label{ color:var(--cyan); letter-spacing:0.08em; min-width:9.5em; text-align:center; }
 
-  .match .team{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .match:not(.scorers) .team{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--cyan); }
+  .match.scorers .team{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .match .score{ flex:0 0 auto; min-width:3.2em; text-align:center; color:var(--yellow); font-weight:bold; }
   .match .status{ flex:0 0 auto; min-width:3em; text-align:right; }
   .status-ft{ color:var(--green); }
@@ -104,7 +105,7 @@
   .match.tappable{ cursor:pointer; }
   .match.tappable .team:first-of-type::after{ content:' \25B8'; color:#666; font-size:.85em; }
   .match.tappable.expanded .team:first-of-type::after{ content:' \25BE'; }
-  .scorers{ font-size:.82em; color:var(--cyan); }
+  .scorers{ font-size:.82em; color:var(--white); }
   .match-gap{ height:.5em; }
 
   /* Table */
@@ -416,15 +417,14 @@ const Data = (() => {
   function startOfLocalDay(d){
     const x = new Date(d); x.setHours(0,0,0,0); return x;
   }
-  // "Today" for football purposes is a broadcast day, not a calendar day:
-  // it shouldn't flip over at midnight while tonight's matches (and their
-  // now-final results) are still the thing everyone's looking at. Before
-  // this cutoff hour, "today" still refers to yesterday's calendar date.
-  const DAY_CUTOFF_HOUR = 5;
+  // "Today" is the actual calendar day - no cutoff/shift. A match that
+  // kicks off at 00:00 belongs under TODAY immediately (it's live!), and
+  // the moment the clock ticks past midnight this recomputes to the new
+  // date on the next 60s refresh, so the page updates itself. Yesterday's
+  // results aren't lost - they're one ◀ tap away, same as LiveScore's
+  // day-tabs: "today" = today, browse back for anything earlier.
   function todayReference(){
-    const now = new Date();
-    if(now.getHours() < DAY_CUTOFF_HOUR) now.setDate(now.getDate()-1);
-    return startOfLocalDay(now);
+    return startOfLocalDay(new Date());
   }
   // Which local calendar day does this match's kickoff fall on? null if
   // kickoff is missing/unparseable (so it's excluded from any day, not
