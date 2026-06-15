@@ -33,7 +33,7 @@
   /* Screen */
   #screen{
     position:relative; flex:1 1 auto; overflow-y:auto; overflow-x:hidden;
-    padding:10px 12px 14px;
+    padding:10px 12px calc(104px + env(safe-area-inset-bottom));
     font-size:clamp(15px,4.6vw,20px); line-height:1.55;
   }
   #screen::after{
@@ -43,6 +43,9 @@
   }
 
   /* Header */
+  .top-bar{ display:flex; justify-content:flex-end;
+    font-size:0.78em; color:#888; letter-spacing:0.05em; margin-bottom:4px; }
+  .top-bar .offline{ color:var(--red); }
   .header-bar{
     display:flex; height:clamp(46px,14vw,60px); margin-bottom:8px;
     gap:clamp(4px,1.5vw,10px); font-family:'Press Start 2P',monospace;
@@ -101,13 +104,14 @@
   .match.tappable{ cursor:pointer; }
   .match.tappable .team:first-of-type::after{ content:' \25B8'; color:#666; font-size:.85em; }
   .match.tappable.expanded .team:first-of-type::after{ content:' \25BE'; }
-  .scorers{ font-size:.82em; color:var(--white); }
+  .scorers{ font-size:.82em; color:var(--cyan); }
   .match-gap{ height:.5em; }
 
   /* Table */
   .table-row{ gap:4px; }
   .table-row .pos{ width:1.7em; color:#888; }
   .table-row .name{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .table-row .name.alt{ color:var(--cyan); }
   .table-row .stat{ width:2.6em; text-align:right; }
   .table-row .pts{ width:2.6em; text-align:right; color:var(--yellow); font-weight:bold; }
   .table-row.head span{ color:var(--cyan); }
@@ -210,7 +214,8 @@
   }
 
   /* Bottom controls */
-  .controls{ flex:0 0 auto; }
+  .controls{ position:fixed; left:0; right:0; bottom:0;
+    background:var(--black); padding-bottom:env(safe-area-inset-bottom); }
   .fastext{ display:grid; grid-template-columns:repeat(4,1fr); }
   .fb{ font-family:'VT323',monospace; font-size:clamp(14px,4vw,17px); padding:12px 4px;
     border:none; font-weight:bold; letter-spacing:0.05em; cursor:pointer; }
@@ -305,6 +310,7 @@ const Data = (() => {
     return {
       competition: 'WORLD CUP',
       subtitle: 'GROUP STAGE',
+      fetchedAt: null, // mock/demo data - top bar shows OFFLINE, not a fake "updated" time
       matches: [
         { home: 'HAITI',        away: 'SCOTLAND', hs: 0, as: 1, status: 'FINISHED', group: 'C',
           scorers: { home: [], away: ['MCTOMINAY 57'] } },
@@ -387,14 +393,15 @@ const Data = (() => {
     return p(d.getHours())+':'+p(d.getMinutes());
   }
 
-  // m.kickoff is a UTC ISO timestamp - format in *this device's* local
-  // timezone/24h style, so it's always correct regardless of where the
-  // viewer is. Falls back to the raw value if it's not a parseable date
-  // (e.g. older mock data still using a bare "HH:MM" string).
-  function formatKickoff(kickoff){
-    if(!kickoff) return '';
-    const d = new Date(kickoff);
-    if(isNaN(d.getTime())) return kickoff;
+  // Formats a UTC ISO timestamp in *this device's* local timezone/24h style,
+  // so it's always correct regardless of where the viewer is. Used for
+  // kickoff times, fixtures, and the "last updated" status line. Falls back
+  // to the raw value if it's not a parseable date (e.g. older mock data
+  // still using a bare "HH:MM" string for kickoff).
+  function formatLocalTime(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return iso;
     const p = n => String(n).padStart(2,'0');
     return p(d.getHours())+':'+p(d.getMinutes());
   }
@@ -451,6 +458,18 @@ const Data = (() => {
   }
 
   function buildHeader(screen, channel, pageNum, subTitle, extraMeta){
+    // Slim status strip above the title banner - the "transmission time"
+    // from real Ceefax, repurposed as "when did we last hear from the
+    // backend". OFFLINE (red) means getFeed() fell back to mock data.
+    const top = el('div','top-bar');
+    const fetchedAt = dataset && dataset.fetchedAt;
+    if(fetchedAt){
+      top.appendChild(el('span','top-bar-label','UPDATED '+formatLocalTime(fetchedAt)));
+    } else {
+      top.appendChild(el('span','top-bar-label offline','OFFLINE'));
+    }
+    screen.appendChild(top);
+
     const bar = el('div','header-bar');
     const ident = el('div','ident');
     ['3','0','2'].forEach(c => ident.appendChild(el('span','ident-cell', c)));
@@ -479,7 +498,7 @@ const Data = (() => {
       return el('span','status status-live', (m.minute != null ? m.minute+"'" : 'LIVE'));
     if(m.status === 'FINISHED')
       return el('span','status status-ft', 'FT');
-    return el('span','status status-time', formatKickoff(m.kickoff));
+    return el('span','status status-time', formatLocalTime(m.kickoff));
   }
 
   function matchRow(m, key, tappable){
@@ -680,7 +699,7 @@ const Data = (() => {
         if(idx===2) screen.appendChild(el('div','row table-divider auto')); // line under top 2
         const r = row('table-row');
         r.appendChild(el('span','pos', idx+1));
-        r.appendChild(el('span','name', t.name));
+        r.appendChild(el('span','name'+(idx%2===1?' alt':''), t.name));
         r.appendChild(el('span','stat', t.p));
         r.appendChild(el('span','stat', t.gd));
         r.appendChild(el('span','pts', t.pts));
@@ -708,7 +727,7 @@ const Data = (() => {
     } else {
       upcoming.forEach(f=>{
         const r = row('fixture-row');
-        r.appendChild(el('span','time', formatKickoff(f.kickoff)));
+        r.appendChild(el('span','time', formatLocalTime(f.kickoff)));
         r.appendChild(el('span','fixture', f.home+' v '+f.away));
         screen.appendChild(r);
       });
