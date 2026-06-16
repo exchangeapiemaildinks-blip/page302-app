@@ -10,6 +10,13 @@
 <title>Page 302</title>
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<!-- Privacy-friendly analytics by Plausible -->
+<script async src="https://plausible.io/js/pa-5kF5GMF4pRozELI1x_uOo.js"></script>
+<script>
+  window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+  plausible.init()
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
@@ -47,22 +54,29 @@
     font-size:0.78em; color:#888; letter-spacing:0.05em; margin-bottom:4px; }
   .top-bar .offline{ color:var(--red); }
   .header-bar{
-    display:flex; height:clamp(46px,14vw,60px); margin-bottom:8px;
-    gap:clamp(4px,1.5vw,10px); font-family:'Press Start 2P',monospace;
+    display:flex; align-items:stretch; margin-bottom:8px; gap:5px;
   }
-  .ident{ display:flex; gap:clamp(4px,1.5vw,10px); flex:0 0 auto; height:100%; }
+  .ident{ display:flex; gap:5px; flex:0 0 auto; }
   .ident-cell{
-    height:100%; aspect-ratio:1;
-    background:#fff; color:#000;
+    background:#fff;
     display:flex; align-items:center; justify-content:center;
-    font-size:clamp(18px,6vw,32px);
+    font-family:'Press Start 2P', monospace;
+    font-size:clamp(16px,6vw,28px);
+    color:#000; line-height:1;
+    padding:clamp(6px,2vw,12px) clamp(4px,1.5vw,10px);
+    -webkit-font-smoothing: none;
+    font-smooth: never;
   }
+  .ident-cell .prow{ display:flex; }
+  .ident-cell .px{ display:block; }
   .channel-block{
-    flex:1 1 auto; background:#1300ff; color:#66ff44;
+    flex:1 1 auto; background:#00c; color:#6f6;
     display:flex; align-items:center; justify-content:center;
-    font-size:clamp(16px,6.5vw,30px); letter-spacing:clamp(2px,1.2vw,8px);
+    padding:0 clamp(8px,2vw,16px);
+    font-family:'Press Start 2P', monospace;
+    font-size:clamp(16px,6vw,28px);
     white-space:nowrap; overflow:hidden;
-    text-shadow: 0.06em 0.06em 0 #1f6b00, 0.12em 0.12em 0 #1f6b00;
+    text-shadow: 2px 2px 0 #040;
   }
   .sub-header{
     display:flex; justify-content:space-between; align-items:baseline; gap:8px;
@@ -150,6 +164,20 @@
 
   /* Loading / error */
   .notice{ color:#888; text-align:center; margin-top:40px; letter-spacing:0.08em; }
+  .a2hs-banner{
+    margin-bottom:8px; padding:8px 10px;
+    border:1px solid #333;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .a2hs-banner .a2hs-title{ color:var(--yellow); font-size:0.78em; letter-spacing:0.06em; }
+  .a2hs-banner .a2hs-steps{ color:#aaa; font-size:0.72em; line-height:1.6; letter-spacing:0.04em; }
+  .a2hs-banner .a2hs-steps strong{ color:var(--white); }
+  .a2hs-banner .a2hs-dismiss{
+    align-self:flex-end; margin-top:2px;
+    background:none; border:1px solid #555; color:var(--cyan);
+    font-family:inherit; font-size:0.72em; letter-spacing:0.08em;
+    padding:4px 10px; cursor:pointer;
+  }
 
   /* Boot — CRT power-on */
   .crt-stage{ position:absolute; inset:0; background:#000; overflow:hidden; z-index:10; }
@@ -343,12 +371,15 @@ const Data = (() => {
   async function fetchLive() {
     // Free-tier hosts (e.g. Render) can take 30-50s to wake from sleep.
     // Don't let that hang the UI — time out and fall back to mock instead.
+    // Note: always return a plain JS object (never a Response or stream) to
+    // avoid DataCloneError on iOS Safari when the result crosses async contexts.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
     try {
       const res = await fetch(BACKEND_URL, { headers: { 'Accept': 'application/json' }, signal: controller.signal });
       if (!res.ok) throw new Error('backend ' + res.status);
-      return await res.json(); // must match { competition, subtitle, matches, table }
+      const data = await res.json();
+      return JSON.parse(JSON.stringify(data)); // ensure plain cloneable object
     } finally {
       clearTimeout(timer);
     }
@@ -471,8 +502,11 @@ const Data = (() => {
     screen.appendChild(top);
 
     const bar = el('div','header-bar');
+    function makePixelTile(char){
+      return el('div','ident-cell', char);
+    }
     const ident = el('div','ident');
-    ['3','0','2'].forEach(c => ident.appendChild(el('span','ident-cell', c)));
+    ['3','0','2'].forEach(c => ident.appendChild(makePixelTile(c)));
     bar.appendChild(ident);
     const chBlock = el('div','channel-block', channel);
     bar.appendChild(chBlock);
@@ -494,7 +528,9 @@ const Data = (() => {
   }
 
   function statusCell(m){
-    if(m.status === 'IN_PLAY' || m.status === 'PAUSED')
+    if(m.status === 'PAUSED')
+      return el('span','status status-live', 'HT');
+    if(m.status === 'IN_PLAY')
       return el('span','status status-live', (m.minute != null ? m.minute+"'" : 'LIVE'));
     if(m.status === 'FINISHED')
       return el('span','status status-ft', 'FT');
@@ -522,7 +558,12 @@ const Data = (() => {
     const h = (m.scorers && m.scorers.home) || [];
     const a = (m.scorers && m.scorers.away) || [];
     if(h.length===0 && a.length===0){
-      out.push(el('div','row hint scorers-empty', 'NO SCORER DATA AVAILABLE'));
+      // Only show "no data" message for matches that have started - upcoming
+      // fixtures haven't had goals yet, that's expected, not an absence of data.
+      const started = m.status==='IN_PLAY' || m.status==='PAUSED' || m.status==='FINISHED';
+      if(started){
+        out.push(el('div','row hint scorers-empty', 'NO SCORER DATA AVAILABLE'));
+      }
       return out;
     }
     for(let i=0;i<Math.max(h.length,a.length);i++){
@@ -620,7 +661,8 @@ const Data = (() => {
           screen.appendChild(el('div','section-title','GROUP '+m.group));
           lastGroup = m.group;
         }
-        screen.appendChild(matchRow(m,key,true));
+        const started = m.status==='IN_PLAY'||m.status==='PAUSED'||m.status==='FINISHED';
+        screen.appendChild(matchRow(m,key,started));
         if(expandedMatches[key]) scorerRows(m).forEach(r=>screen.appendChild(r));
       });
       screen.appendChild(el('div','row hint','SCORERS HIDDEN — TAP A MATCH TO REVEAL'));
@@ -844,13 +886,39 @@ const Data = (() => {
 
   // ---------- routing ----------
   const renderers = { 301:renderIndex, 302:renderScores, 303:renderTable, 304:renderFixtures, 305:renderTicker };
+  function maybeShowA2HS(screen){
+    // Only relevant on iOS Safari running in browser (not already installed as PWA)
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isSafari = /safari/i.test(navigator.userAgent) && !/chrome|crios|fxios/i.test(navigator.userAgent);
+    const isStandalone = window.navigator.standalone === true;
+    const dismissed = readPersist('a2hsDismissed') === '1';
+    if(!isIOS || !isSafari || isStandalone || dismissed) return;
+
+    const banner = el('div','a2hs-banner');
+    const title = el('div','a2hs-title','📺 GET THE FULL EXPERIENCE');
+    const steps = el('div','a2hs-steps');
+    steps.innerHTML = 'Add to your Home Screen for live scores, offline access &amp; sharing.<br><strong>Safari → Share ↑ → Add to Home Screen</strong>';
+    const btn = el('button','a2hs-dismiss','GOT IT ✓');
+    btn.addEventListener('click', () => {
+      try{ persist('a2hsDismissed','1'); }catch(e){}
+      banner.remove();
+    });
+    banner.appendChild(title);
+    banner.appendChild(steps);
+    banner.appendChild(btn);
+    // Insert after header (first child of screen), before everything else
+    screen.insertBefore(banner, screen.firstChild);
+  }
+
   function renderPage(n){
     if(!renderers[n]) return;
     if(n!==302) clearClassicTimer();
     if(n!==305 && tickerTimer){ clearInterval(tickerTimer); tickerTimer=null; }
-    if(n===302) dayOffset = 0; // nav-button tap always returns to today; prev/next + periodic refresh bypass renderPage and preserve it
+    if(n===302) dayOffset = 0;
     currentPage=n; renderers[n]();
     document.querySelectorAll('.fb').forEach(b=>b.classList.toggle('active', +b.dataset.page===n));
+    // Show add-to-home-screen nudge if applicable (iOS Safari, not yet installed, not dismissed)
+    maybeShowA2HS(document.getElementById('screen'));
     if(n===305 && !tickerTimer){
       tickerTimer=setInterval(()=>{
         if(currentPage!==305) return;
@@ -964,30 +1032,62 @@ const Data = (() => {
     // restore prefs
     if(readPersist('classicMode')==='1') classicMode = true;
 
-    // load data — defensively, so nothing here can kill the app
-    try{
-      if(typeof Data !== 'undefined' && Data.getFeed){
-        dataset = await Data.getFeed();
+    // Render immediately with whatever we have (empty is fine — "TUNING IN"
+    // shows), then fetch data in the background. This way the app is never
+    // blocked waiting for Render to wake up from a cold start — users see
+    // the UI instantly, and it populates as soon as the fetch resolves.
+    const bootAndRender = () => {
+      let anyLive = false;
+      try{ anyLive = !!(dataset && dataset.matches && dataset.matches.some(m=>m.status==='IN_PLAY'||m.status==='PAUSED')); }catch(e){}
+      const today = new Date().toLocaleDateString();
+      const lastBoot = readPersist('lastBoot');
+      const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      if(!reduce && !anyLive && lastBoot!==today){
+        try{ persist('lastBoot', today); }catch(e){}
+        playBoot(()=>renderPage(302));
       } else {
-        loadError = true;
+        renderPage(302);
       }
-    }catch(e){ console.warn('data load failed', e); loadError = true; }
+    };
 
-    // boot sequence: first open of the day, only if nothing currently live.
-    // (During the World Cup, live games will usually skip the boot by design —
-    //  use the REPLAY TUNING-IN button on page 301 to watch it any time.)
-    let anyLive = false;
-    try{ anyLive = !!(dataset && dataset.matches && dataset.matches.some(m=>m.status==='IN_PLAY'||m.status==='PAUSED')); }catch(e){}
-    const today = new Date().toLocaleDateString();
-    const lastBoot = readPersist('lastBoot');
-    const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-
-    if(!reduce && !anyLive && lastBoot!==today){
-      try{ persist('lastBoot', today); }catch(e){}
-      playBoot(()=>renderPage(302));
+    // Kick off the data fetch immediately — but don't await it before
+    // rendering. If we already have data from a previous session (future:
+    // local cache) we'd show that first; for now we just show the UI shell.
+    let fetched = false;
+    if(typeof Data !== 'undefined' && Data.getFeed){
+      Data.getFeed()
+        .then(data => {
+          if(data){ dataset = data; loadError = false; }
+          if(!fetched){ fetched = true; bootAndRender(); }
+          else { if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
+        })
+        .catch(e => {
+          console.warn('initial data load failed', e);
+          loadError = true;
+          if(!fetched){ fetched = true; bootAndRender(); }
+        });
     } else {
-      renderPage(302);
+      loadError = true;
     }
+
+    // Safety net: if the fetch hasn't resolved in 5s (e.g. Render cold start),
+    // go ahead and show the UI anyway so the user isn't staring at a blank screen.
+    // The fetch will still complete and re-render when it eventually resolves.
+    setTimeout(() => {
+      if(!fetched){ fetched = true; bootAndRender(); }
+    }, 5000);
+
+    // Re-fetch immediately when the app comes back to the foreground — covers
+    // the "opened app, switched away, came back 10 minutes later" case where
+    // the 60s interval has been paused by the browser and data is stale.
+    document.addEventListener('visibilitychange', async () => {
+      if(document.visibilityState !== 'visible') return;
+      try{
+        if(typeof Data==='undefined' || !Data.getFeed) return;
+        const fresh = await Data.getFeed();
+        if(fresh){ dataset = fresh; loadError = false; if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
+      }catch(e){}
+    });
 
     // periodic refresh (every 60s) — in mock mode this just re-renders
     setInterval(async ()=>{
