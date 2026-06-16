@@ -112,6 +112,7 @@
   .match .status{ flex:0 0 auto; min-width:3em; text-align:right; }
   .status-ft{ color:var(--green); }
   .status-live{ color:var(--red); animation:flash 1s steps(2,start) infinite; }
+  @keyframes livepulse{ 0%,100%{opacity:1;} 50%{opacity:0.15;} }
   .status-time{ color:var(--yellow); }
   @media (prefers-reduced-motion:reduce){ .status-live{animation:none;} }
   @keyframes flash{ 50%{opacity:.2;} }
@@ -127,6 +128,12 @@
   .table-row .pos{ width:1.7em; color:#888; }
   .table-row .name{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .table-row .name.alt{ color:var(--cyan); }
+  .live-dot{
+    display:inline-block; width:0.45em; height:0.45em;
+    background:var(--red); border-radius:50%;
+    margin-left:0.4em; vertical-align:middle;
+    animation:livepulse 1.2s ease-in-out infinite;
+  }
   .table-row .stat{ width:2.6em; text-align:right; }
   .table-row .pts{ width:2.6em; text-align:right; color:var(--yellow); font-weight:bold; }
   .table-row.head span{ color:var(--cyan); }
@@ -152,6 +159,9 @@
   .index-row .num-btn{ width:2.6em; }
   .index-row .label{ color:var(--white); cursor:pointer; }
   .hint{ color:#666; margin-top:8px; font-size:.92em; }
+  .lineup-sep{ color:#555; text-align:center; margin:4px 0; font-size:.82em; }
+  .lineup-coach .team{ color:#888; font-size:0.85em; }
+  .lineup-header .team{ color:var(--yellow); font-size:0.82em; }
   .hint-link{ color:#888; margin-top:10px; font-size:.9em; }
   .nogamble{ color:var(--green); margin-top:10px; letter-spacing:0.04em; }
 
@@ -558,8 +568,6 @@ const Data = (() => {
     const h = (m.scorers && m.scorers.home) || [];
     const a = (m.scorers && m.scorers.away) || [];
     if(h.length===0 && a.length===0){
-      // Only show "no data" message for matches that have started - upcoming
-      // fixtures haven't had goals yet, that's expected, not an absence of data.
       const started = m.status==='IN_PLAY' || m.status==='PAUSED' || m.status==='FINISHED';
       if(started){
         out.push(el('div','row hint scorers-empty', 'NO SCORER DATA AVAILABLE'));
@@ -575,6 +583,52 @@ const Data = (() => {
       out.push(r);
     }
     return out;
+  }
+
+  // Position abbreviations for teletext-compact display
+  const POS_SHORT = { Goalkeeper:'GK', Defence:'DEF', Midfield:'MID', Offence:'FWD' };
+
+  function lineupRows(m){
+    const out = [];
+    const ln = m.lineups;
+    if(!ln) return out;
+    const h = ln.home, a = ln.away;
+    if(!h || !a || !h.lineup || !h.lineup.length) return out;
+
+    // Formation header
+    const fRow = row('match scorers lineup-header');
+    fRow.appendChild(el('span','team', h.formation || ''));
+    fRow.appendChild(el('span','score',''));
+    fRow.appendChild(el('span','team', a.formation || ''));
+    fRow.appendChild(el('span','status',''));
+    out.push(fRow);
+
+    // Starting XI — side by side, row by row
+    const maxLen = Math.max(h.lineup.length, a.lineup.length);
+    for(let i=0;i<maxLen;i++){
+      const hp = h.lineup[i], ap = a.lineup[i];
+      const r = row('match scorers');
+      const fmtPlayer = p => p ? (p.shirt+'  '+p.name.split(' ').pop().toUpperCase()+'  '+(POS_SHORT[p.pos]||p.pos||'')) : '';
+      r.appendChild(el('span','team', hp ? fmtPlayer(hp) : ''));
+      r.appendChild(el('span','score',''));
+      r.appendChild(el('span','team', ap ? fmtPlayer(ap) : ''));
+      r.appendChild(el('span','status',''));
+      out.push(r);
+    }
+
+    // Coach
+    const cRow = row('match scorers lineup-coach');
+    cRow.appendChild(el('span','team', h.coach ? 'MGR: '+h.coach.split(' ').pop().toUpperCase() : ''));
+    cRow.appendChild(el('span','score',''));
+    cRow.appendChild(el('span','team', a.coach ? 'MGR: '+a.coach.split(' ').pop().toUpperCase() : ''));
+    cRow.appendChild(el('span','status',''));
+    out.push(cRow);
+
+    return out;
+  }
+
+  function hasLineup(m){
+    return !!(m.lineups && m.lineups.home && m.lineups.home.lineup && m.lineups.home.lineup.length > 0);
   }
 
   function matchRowCount(m){
@@ -662,8 +716,22 @@ const Data = (() => {
           lastGroup = m.group;
         }
         const started = m.status==='IN_PLAY'||m.status==='PAUSED'||m.status==='FINISHED';
-        screen.appendChild(matchRow(m,key,started));
-        if(expandedMatches[key]) scorerRows(m).forEach(r=>screen.appendChild(r));
+        const tappable = started || hasLineup(m);
+        screen.appendChild(matchRow(m,key,tappable));
+        if(expandedMatches[key]){
+          if(!started && hasLineup(m)){
+            // Pre-match with lineups: show team sheets only
+            lineupRows(m).forEach(r=>screen.appendChild(r));
+          } else {
+            // Started: scorers first, then lineups if available
+            scorerRows(m).forEach(r=>screen.appendChild(r));
+            if(hasLineup(m)){
+              const sep = el('div','row hint lineup-sep','— LINEUPS —');
+              screen.appendChild(sep);
+              lineupRows(m).forEach(r=>screen.appendChild(r));
+            }
+          }
+        }
       });
       screen.appendChild(el('div','row hint','SCORERS HIDDEN — TAP A MATCH TO REVEAL'));
     }
@@ -726,6 +794,15 @@ const Data = (() => {
     screen.innerHTML='';
     buildHeader(screen,'TABLES','303','GROUP STANDINGS');
 
+    // Build set of team names currently IN_PLAY or PAUSED
+    const liveTeams = new Set();
+    (dataset.matches||[]).forEach(m=>{
+      if(m.status==='IN_PLAY'||m.status==='PAUSED'){
+        liveTeams.add(m.home);
+        liveTeams.add(m.away);
+      }
+    });
+
     // group rows by their group letter; within each, top 2 marked as qualifying
     const groups = {};
     dataset.table.forEach(t=>{ (groups[t.group||'-'] = groups[t.group||'-'] || []).push(t); });
@@ -738,10 +815,15 @@ const Data = (() => {
       });
       screen.appendChild(head);
       groups[g].forEach((t,idx)=>{
-        if(idx===2) screen.appendChild(el('div','row table-divider auto')); // line under top 2
+        if(idx===2) screen.appendChild(el('div','row table-divider auto'));
         const r = row('table-row');
         r.appendChild(el('span','pos', idx+1));
-        r.appendChild(el('span','name'+(idx%2===1?' alt':''), t.name));
+        const nameCell = el('span','name'+(idx%2===1?' alt':''), t.name);
+        if(liveTeams.has(t.name)){
+          const dot = el('span','live-dot','');
+          nameCell.appendChild(dot);
+        }
+        r.appendChild(nameCell);
         r.appendChild(el('span','stat', t.p));
         r.appendChild(el('span','stat', t.gd));
         r.appendChild(el('span','pts', t.pts));
