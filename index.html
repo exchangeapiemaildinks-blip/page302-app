@@ -50,8 +50,12 @@
   }
 
   /* Header */
-  .top-bar{ display:flex; justify-content:flex-end;
+  .top-bar{ display:flex; justify-content:space-between; align-items:baseline;
     font-size:0.78em; color:#888; letter-spacing:0.05em; margin-bottom:4px; }
+  .top-bar .page-ref{ color:#888; }
+  .top-bar .top-right{ display:flex; gap:0.8em; }
+  .top-bar .top-date{ color:#888; }
+  .top-bar .top-time{ color:var(--white); }
   .top-bar .offline{ color:var(--red); }
   .header-bar{
     display:flex; align-items:stretch; margin-bottom:8px; gap:5px;
@@ -85,10 +89,11 @@
   .sub-title{ color:var(--green); letter-spacing:0.05em; overflow:hidden;
     text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:5.5em; }
   .sub-meta{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
-  .page-num{ background:var(--yellow); color:var(--black); font-weight:bold;
-    padding:1px 6px; letter-spacing:0.05em; }
+  .page-num{ color:#888; font-weight:bold; letter-spacing:0.05em; display:none; }
   .page-count{ color:var(--white); font-weight:bold; letter-spacing:0.05em; }
   .clock{ color:var(--white); font-size:0.95em; letter-spacing:0.05em; white-space:nowrap; }
+  .updated-label{ color:#888; font-size:0.85em; letter-spacing:0.05em; white-space:nowrap; }
+  .updated-label.offline{ color:var(--red); }
 
   /* Rows */
   .row{ display:flex; align-items:center; gap:6px; opacity:0;
@@ -106,10 +111,10 @@
   .day-arrow.disabled{ color:#333; border-color:#222; cursor:default; }
   .day-label{ color:var(--cyan); letter-spacing:0.08em; min-width:9.5em; text-align:center; }
 
-  .match:not(.scorers) .team{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--cyan); }
-  .match.scorers .team{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .match .score{ flex:0 0 auto; min-width:3.2em; text-align:center; color:var(--yellow); font-weight:bold; }
-  .match .status{ flex:0 0 auto; min-width:3em; text-align:right; }
+  .match:not(.scorers) .team{ flex:1 1 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--cyan); }
+  .match.scorers .team{ flex:1 1 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .match .score{ flex:0 0 3.5em; text-align:center; color:var(--yellow); font-weight:bold; }
+  .match .status{ flex:0 0 3em; text-align:right; }
   .status-ft{ color:var(--green); }
   .status-live{ color:var(--red); animation:flash 1s steps(2,start) infinite; }
   @keyframes livepulse{ 0%,100%{opacity:1;} 50%{opacity:0.15;} }
@@ -162,6 +167,10 @@
   .lineup-sep{ color:#555; text-align:center; margin:4px 0; font-size:.82em; }
   .lineup-coach .team{ color:#888; font-size:0.85em; }
   .lineup-header .team{ color:var(--yellow); font-size:0.82em; }
+  .lineup-player{ display:flex; align-items:baseline; gap:0; overflow:hidden; flex:1 1 0; }
+  .lp-shirt{ flex:0 0 2em; color:#888; font-size:.82em; }
+  .lp-name{ flex:1 1 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.82em; }
+  .lp-pos{ flex:0 0 2.5em; text-align:right; color:#555; font-size:.75em; }
   .hint-link{ color:#888; margin-top:10px; font-size:.9em; }
   .nogamble{ color:var(--green); margin-top:10px; letter-spacing:0.04em; }
 
@@ -355,7 +364,7 @@ const Data = (() => {
           scorers: { home: [], away: ['MCTOMINAY 57'] } },
         { home: 'AUSTRALIA',    away: 'TURKIYE',  hs: 2, as: 0, status: 'FINISHED', group: 'D',
           scorers: { home: ['DUKE 31', 'IRVINE 66'], away: [] } },
-        { home: 'GERMANY',      away: 'CURACAO',  hs: 0, as: 0, status: 'IN_PLAY', minute: 38, group: 'E',
+        { home: 'GERMANY',      away: 'CURACAO',  hs: 7, as: 1, status: 'FINISHED', minute: null, group: 'E',
           scorers: { home: [], away: [] } },
         { home: 'NETHERLANDS',  away: 'JAPAN',    hs: 0, as: 0, status: 'TIMED', kickoff: '2026-06-14T19:00:00Z', group: 'F' },
         { home: 'COTE DIVOIRE', away: 'ECUADOR',  hs: 0, as: 0, status: 'TIMED', kickoff: '2026-06-14T22:00:00Z', group: 'E' }
@@ -435,6 +444,13 @@ const Data = (() => {
     return p(d.getHours())+':'+p(d.getMinutes());
   }
 
+  function dateString(){
+    const d = new Date();
+    const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+    const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    return days[d.getDay()]+' '+d.getDate()+' '+months[d.getMonth()];
+  }
+
   // Formats a UTC ISO timestamp in *this device's* local timezone/24h style,
   // so it's always correct regardless of where the viewer is. Used for
   // kickoff times, fixtures, and the "last updated" status line. Falls back
@@ -499,22 +515,17 @@ const Data = (() => {
   }
 
   function buildHeader(screen, channel, pageNum, subTitle, extraMeta){
-    // Slim status strip above the title banner - the "transmission time"
-    // from real Ceefax, repurposed as "when did we last hear from the
-    // backend". OFFLINE (red) means getFeed() fell back to mock data.
+    // Top bar: P302 left | date + live clock right
     const top = el('div','top-bar');
-    const fetchedAt = dataset && dataset.fetchedAt;
-    if(fetchedAt){
-      top.appendChild(el('span','top-bar-label','UPDATED '+formatLocalTime(fetchedAt)));
-    } else {
-      top.appendChild(el('span','top-bar-label offline','OFFLINE'));
-    }
+    top.appendChild(el('span','page-ref', 'P'+pageNum));
+    const topRight = el('div','top-right');
+    topRight.appendChild(el('span','top-date', dateString()));
+    topRight.appendChild(el('span','top-time clock', clockString()));
+    top.appendChild(topRight);
     screen.appendChild(top);
 
     const bar = el('div','header-bar');
-    function makePixelTile(char){
-      return el('div','ident-cell', char);
-    }
+    function makePixelTile(char){ return el('div','ident-cell', char); }
     const ident = el('div','ident');
     ['3','0','2'].forEach(c => ident.appendChild(makePixelTile(c)));
     bar.appendChild(ident);
@@ -522,17 +533,22 @@ const Data = (() => {
     bar.appendChild(chBlock);
     screen.appendChild(bar);
     fitToWidth(chBlock);
-    // Re-check once the real webfont has finished loading (first render may
-    // have measured against the fallback font).
     if(document.fonts && document.fonts.ready){
       document.fonts.ready.then(()=>fitToWidth(chBlock));
     }
+
+    // Sub-header: title left | extraMeta + updated/offline right
     const sub = el('div','sub-header');
     sub.appendChild(el('span','sub-title', subTitle));
     const meta = el('div','sub-meta');
     if(extraMeta) meta.appendChild(extraMeta);
-    meta.appendChild(el('span','page-num', pageNum));
-    meta.appendChild(el('span','clock', clockString()));
+    // Updated/offline replaces the clock here
+    const fetchedAt = dataset && dataset.fetchedAt;
+    if(fetchedAt){
+      meta.appendChild(el('span','updated-label', 'UPDATED '+formatLocalTime(fetchedAt)));
+    } else {
+      meta.appendChild(el('span','updated-label offline', 'OFFLINE'));
+    }
     sub.appendChild(meta);
     screen.appendChild(sub);
   }
@@ -605,13 +621,25 @@ const Data = (() => {
 
     // Starting XI — side by side, row by row
     const maxLen = Math.max(h.lineup.length, a.lineup.length);
+
+    function playerCell(p){
+      const cell = el('span','team lineup-player');
+      if(!p){ return cell; }
+      const shirt = el('span','lp-shirt', p.shirt);
+      const name  = el('span','lp-name',  p.name.split(' ').pop().toUpperCase());
+      const pos   = el('span','lp-pos',   POS_SHORT[p.pos]||'');
+      cell.appendChild(shirt);
+      cell.appendChild(name);
+      cell.appendChild(pos);
+      return cell;
+    }
+
     for(let i=0;i<maxLen;i++){
       const hp = h.lineup[i], ap = a.lineup[i];
       const r = row('match scorers');
-      const fmtPlayer = p => p ? (p.shirt+'  '+p.name.split(' ').pop().toUpperCase()+'  '+(POS_SHORT[p.pos]||p.pos||'')) : '';
-      r.appendChild(el('span','team', hp ? fmtPlayer(hp) : ''));
+      r.appendChild(playerCell(hp));
       r.appendChild(el('span','score',''));
-      r.appendChild(el('span','team', ap ? fmtPlayer(ap) : ''));
+      r.appendChild(playerCell(ap));
       r.appendChild(el('span','status',''));
       out.push(r);
     }
