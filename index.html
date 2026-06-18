@@ -387,13 +387,13 @@ const Data = (() => {
   }
 
   // ---- LIVE FETCH (wire up later) ----------------------------------------
-  async function fetchLive() {
-    // Free-tier hosts (e.g. Render) can take 30-50s to wake from sleep.
-    // Don't let that hang the UI — time out and fall back to mock instead.
-    // Note: always return a plain JS object (never a Response or stream) to
-    // avoid DataCloneError on iOS Safari when the result crosses async contexts.
+  async function fetchLive(timeoutMs){
+    // Free-tier hosts (e.g. Render) can take 20-40s to wake from sleep on a
+    // cold start. Give it real room rather than aborting too early and
+    // silently substituting mock data (which then misleads the day-nav into
+    // showing "NO MATCHES THIS DAY" because the mock dates don't match today).
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs || 35000);
     try {
       const res = await fetch(BACKEND_URL, { headers: { 'Accept': 'application/json' }, signal: controller.signal });
       if (!res.ok) throw new Error('backend ' + res.status);
@@ -407,8 +407,19 @@ const Data = (() => {
   // ---- PUBLIC API ---------------------------------------------------------
   async function getFeed() {
     if (USE_LIVE) {
-      try { return await fetchLive(); }
-      catch (e) { console.warn('live fetch failed, falling back to mock:', e); return mockWorldCup(); }
+      try {
+        return await fetchLive(35000);
+      } catch (e) {
+        console.warn('live fetch failed, retrying once:', e);
+        try {
+          // Render is very likely awake now even if the first call timed out
+          // waiting for it - a quick second attempt usually succeeds fast.
+          return await fetchLive(15000);
+        } catch (e2) {
+          console.warn('live fetch retry failed, falling back to mock:', e2);
+          return mockWorldCup();
+        }
+      }
     }
     await new Promise((r) => setTimeout(r, 250));
     return mockWorldCup();
@@ -1180,12 +1191,15 @@ const Data = (() => {
       loadError = true;
     }
 
-    // Safety net: if the fetch hasn't resolved in 5s (e.g. Render cold start),
-    // go ahead and show the UI anyway so the user isn't staring at a blank screen.
-    // The fetch will still complete and re-render when it eventually resolves.
+    // Safety net: if the fetch hasn't resolved in 6s, show the UI shell
+    // anyway (TUNING IN) so the user isn't staring at a blank white screen
+    // during a Render cold start. The fetch keeps running in the background
+    // — getFeed() now waits up to ~50s total (35s + 15s retry) before
+    // giving up and falling back to mock, so this is purely about not
+    // blocking the *initial paint*, not about giving up on real data.
     setTimeout(() => {
       if(!fetched){ fetched = true; bootAndRender(); }
-    }, 5000);
+    }, 6000);
 
     // Re-fetch immediately when the app comes back to the foreground — covers
     // the "opened app, switched away, came back 10 minutes later" case where
