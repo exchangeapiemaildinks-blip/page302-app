@@ -183,6 +183,17 @@
 
   /* Loading / error */
   .notice{ color:#888; text-align:center; margin-top:40px; letter-spacing:0.08em; }
+  .fetching-banner{
+    display:flex; align-items:center; gap:8px;
+    color:#888; font-size:0.78em; letter-spacing:0.06em;
+    margin-bottom:10px; padding-bottom:8px;
+    border-bottom:1px solid #222;
+    animation:flash 1.4s steps(2,start) infinite;
+  }
+  .fetching-banner .fb-dot{
+    width:0.5em; height:0.5em; border-radius:50%;
+    background:var(--yellow); flex:0 0 auto;
+  }
   .a2hs-banner{
     margin-bottom:8px; padding:8px 10px;
     border:1px solid #333;
@@ -386,7 +397,35 @@ const Data = (() => {
     };
   }
 
-  // ---- LIVE FETCH (wire up later) ----------------------------------------
+  // ---- LOCAL CACHE --------------------------------------------------------
+  // Persist the last successful /feed response so the app can show real
+  // match data instantly on next open, even before the backend responds.
+  const CACHE_KEY = 'p302_feedCache';
+  const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // discard if >24h old
+
+  function saveCache(data) {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        data,
+        savedAt: Date.now()
+      }));
+    } catch(e) {} // quota exceeded or private mode — silently ignore
+  }
+
+  function readCache() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const { data, savedAt } = JSON.parse(raw);
+      if (Date.now() - savedAt > CACHE_MAX_AGE_MS) {
+        localStorage.removeItem(CACHE_KEY);
+        return null;
+      }
+      return data;
+    } catch(e) { return null; }
+  }
+
+  // ---- LIVE FETCH ---------------------------------------------------------
   async function fetchLive(timeoutMs){
     // Free-tier hosts (e.g. Render) can take 20-40s to wake from sleep on a
     // cold start. Give it real room rather than aborting too early and
@@ -408,13 +447,15 @@ const Data = (() => {
   async function getFeed() {
     if (USE_LIVE) {
       try {
-        return await fetchLive(35000);
+        const data = await fetchLive(35000);
+        saveCache(data);
+        return data;
       } catch (e) {
         console.warn('live fetch failed, retrying once:', e);
         try {
-          // Render is very likely awake now even if the first call timed out
-          // waiting for it - a quick second attempt usually succeeds fast.
-          return await fetchLive(15000);
+          const data = await fetchLive(15000);
+          saveCache(data);
+          return data;
         } catch (e2) {
           console.warn('live fetch retry failed, falling back to mock:', e2);
           return mockWorldCup();
@@ -425,7 +466,7 @@ const Data = (() => {
     return mockWorldCup();
   }
 
-  return { getFeed, USE_LIVE };
+  return { getFeed, readCache, USE_LIVE };
 })();
 
 </script>
@@ -1148,22 +1189,45 @@ const Data = (() => {
   async function persist(k,v){ try{ localStorage.setItem('p302_'+k, v); }catch(e){} }
   function readPersist(k){ try{ return localStorage.getItem('p302_'+k); }catch(e){ return null; } }
 
+  // ---------- fetching banner (shown while stale cache is on screen) ----------
+  let fetchingBanner = null;
+
+  function showFetchingBanner(){
+    const screen = document.getElementById('screen');
+    if(!screen || fetchingBanner) return;
+    fetchingBanner = document.createElement('div');
+    fetchingBanner.className = 'fetching-banner';
+    const dot = document.createElement('div');
+    dot.className = 'fb-dot';
+    fetchingBanner.appendChild(dot);
+    fetchingBanner.appendChild(document.createTextNode('RETRIEVING LIVE DATA…'));
+    // Insert after buildHeader output (sub-header is 3rd child) so it sits
+    // just below the subtitle bar, before any match rows.
+    const rows = screen.children;
+    const insertAfter = rows[2] || rows[rows.length-1] || null;
+    if(insertAfter && insertAfter.nextSibling){
+      screen.insertBefore(fetchingBanner, insertAfter.nextSibling);
+    } else {
+      screen.appendChild(fetchingBanner);
+    }
+  }
+
+  function hideFetchingBanner(){
+    if(fetchingBanner){ fetchingBanner.remove(); fetchingBanner = null; }
+  }
+
   // ---------- startup ----------
   async function start(){
     // restore prefs
     if(readPersist('classicMode')==='1') classicMode = true;
 
-    // Render immediately with whatever we have (empty is fine — "TUNING IN"
-    // shows), then fetch data in the background. This way the app is never
-    // blocked waiting for Render to wake up from a cold start — users see
-    // the UI instantly, and it populates as soon as the fetch resolves.
-    const bootAndRender = () => {
+    const bootAndRender = (skipBoot) => {
       let anyLive = false;
       try{ anyLive = !!(dataset && dataset.matches && dataset.matches.some(m=>m.status==='IN_PLAY'||m.status==='PAUSED')); }catch(e){}
       const today = new Date().toLocaleDateString();
       const lastBoot = readPersist('lastBoot');
       const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-      if(!reduce && !anyLive && lastBoot!==today){
+      if(!skipBoot && !reduce && !anyLive && lastBoot!==today){
         try{ persist('lastBoot', today); }catch(e){}
         playBoot(()=>renderPage(302));
       } else {
@@ -1171,39 +1235,56 @@ const Data = (() => {
       }
     };
 
-    // Kick off the data fetch immediately — but don't await it before
-    // rendering. If we already have data from a previous session (future:
-    // local cache) we'd show that first; for now we just show the UI shell.
+    // ---- Step 1: show cached data instantly if available ----
+    const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache() : null;
+    let initiallyFromCache = false;
+    if(cached){
+      dataset = cached;
+      loadError = false;
+      initiallyFromCache = true;
+      bootAndRender(true); // skip boot when we already have real content
+    }
+
+    // ---- Step 2: fetch live data in background ----
     let fetched = false;
+
+    const onFetched = (data, failed) => {
+      hideFetchingBanner();
+      if(!failed && data){ dataset = data; loadError = false; }
+      else if(failed){ loadError = true; }
+      if(!fetched){
+        fetched = true;
+        if(!initiallyFromCache) bootAndRender(false);
+        else if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage]();
+      } else {
+        if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage]();
+      }
+    };
+
     if(typeof Data !== 'undefined' && Data.getFeed){
       Data.getFeed()
-        .then(data => {
-          if(data){ dataset = data; loadError = false; }
-          if(!fetched){ fetched = true; bootAndRender(); }
-          else { if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
-        })
-        .catch(e => {
-          console.warn('initial data load failed', e);
-          loadError = true;
-          if(!fetched){ fetched = true; bootAndRender(); }
-        });
+        .then(data => onFetched(data, false))
+        .catch(e => { console.warn('initial data load failed', e); onFetched(null, true); });
     } else {
       loadError = true;
     }
 
-    // Safety net: if the fetch hasn't resolved in 6s, show the UI shell
-    // anyway (TUNING IN) so the user isn't staring at a blank white screen
-    // during a Render cold start. The fetch keeps running in the background
-    // — getFeed() now waits up to ~50s total (35s + 15s retry) before
-    // giving up and falling back to mock, so this is purely about not
-    // blocking the *initial paint*, not about giving up on real data.
+    // ---- Step 3: safety net — if no cache and fetch is slow, show TUNING IN ----
+    // If we already showed cached data, instead show the "retrieving" banner.
     setTimeout(() => {
-      if(!fetched){ fetched = true; bootAndRender(); }
-    }, 6000);
+      if(initiallyFromCache){
+        // Show banner under the (already-rendered) cached content
+        if(currentPage===302||currentPage===303||currentPage===304) showFetchingBanner();
+      } else if(!fetched){
+        // No cache, fetch still pending — show UI shell with TUNING IN
+        fetched = true;
+        bootAndRender(false);
+        // And show the banner once the page has rendered
+        setTimeout(showFetchingBanner, 100);
+      }
+    }, 1500);
 
-    // Re-fetch immediately when the app comes back to the foreground — covers
-    // the "opened app, switched away, came back 10 minutes later" case where
-    // the 60s interval has been paused by the browser and data is stale.
+    // ---- Step 4: re-fetch on foreground return ----
     document.addEventListener('visibilitychange', async () => {
       if(document.visibilityState !== 'visible') return;
       try{
