@@ -155,6 +155,7 @@
   /* Fixtures */
   .fixture-row .time{ width:3.6em; color:var(--yellow); flex:0 0 auto; }
   .fixture-row .fixture{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fixture-section{ color:var(--cyan); font-size:0.82em; margin:4px 0 2px; letter-spacing:0.05em; }
 
   /* Index / nav */
   .index-row{ gap:6px; }
@@ -924,18 +925,62 @@ const Data = (() => {
     if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
     screen.innerHTML='';
     buildHeader(screen,'FIXTURES','304','UPCOMING');
-    const todayKey = localDateKey(todayReference());
-    const upcoming = dataset.matches.filter(m => matchDateKey(m) === todayKey && (m.status==='TIMED'||m.status==='SCHEDULED'));
+
+    const STAGE_LABELS = {
+      GROUP_STAGE:'GROUP STAGE', LAST_32:'ROUND OF 32', LAST_16:'ROUND OF 16',
+      QUARTER_FINALS:'QUARTER-FINALS', SEMI_FINALS:'SEMI-FINALS',
+      THIRD_PLACE:'THIRD PLACE PLAY-OFF', FINAL:'FINAL'
+    };
+
+    // All upcoming matches sorted by kickoff
+    const upcoming = (dataset.matches || [])
+      .filter(m => m.status === 'TIMED' || m.status === 'SCHEDULED')
+      .sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff));
+
     if(!upcoming.length){
-      screen.appendChild(el('div','row hint','NO UPCOMING FIXTURES TODAY'));
-    } else {
-      upcoming.forEach(f=>{
+      screen.appendChild(el('div','row hint','NO UPCOMING FIXTURES'));
+      applyStagger(screen);
+      return;
+    }
+
+    // Group by local calendar date
+    const byDate = {};
+    const dateOrder = [];
+    upcoming.forEach(f => {
+      const dk = matchDateKey(f);
+      if(!byDate[dk]){ byDate[dk] = []; dateOrder.push(dk); }
+      byDate[dk].push(f);
+    });
+
+    const todayKey = localDateKey(todayReference());
+
+    dateOrder.forEach(dk => {
+      // Date header — TODAY / TOMORROW / WED 24 JUN etc
+      const offset = Math.round((new Date(dk) - new Date(todayKey)) / 86400000);
+      const label = offset === 0 ? 'TODAY' : offset === 1 ? 'TOMORROW'
+        : dayLabel(offset, new Date(dk+'T12:00:00'));
+      screen.appendChild(el('div','section-title', label));
+
+      // Group/round subheader changes within the day
+      let lastSection = null;
+      byDate[dk].forEach(f => {
+        const section = f.group
+          ? 'GROUP '+f.group
+          : (STAGE_LABELS[f.stage] || f.stage || '');
+        if(section && section !== lastSection){
+          screen.appendChild(el('div','fixture-section', section));
+          lastSection = section;
+        }
         const r = row('fixture-row');
         r.appendChild(el('span','time', formatLocalTime(f.kickoff)));
-        r.appendChild(el('span','fixture', f.home+' v '+f.away));
+        // For knockout matches, teams may be TBD (shown as "TBD" or "Winner X")
+        const homeName = f.home === 'TBD' ? 'TBD' : f.home;
+        const awayName = f.away === 'TBD' ? 'TBD' : f.away;
+        r.appendChild(el('span','fixture', homeName+' v '+awayName));
         screen.appendChild(r);
       });
-    }
+    });
+
     applyStagger(screen);
   }
 
