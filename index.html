@@ -612,6 +612,17 @@ const Data = (() => {
     }
     sub.appendChild(meta);
     screen.appendChild(sub);
+
+    // Competition switcher — shown on every page if more than one comp available
+    if(Object.keys(COMP_CONFIG).length > 1){
+      const sw = el('div','comp-switcher');
+      Object.entries(COMP_CONFIG).forEach(([code, cfg])=>{
+        const btn = el('button','comp-btn'+(code===currentComp?' active':''), cfg.short);
+        btn.addEventListener('click', ()=>switchComp(code));
+        sw.appendChild(btn);
+      });
+      screen.appendChild(sw);
+    }
   }
 
   function statusCell(m){
@@ -1080,14 +1091,7 @@ const Data = (() => {
     screen.innerHTML='';
     buildHeader(screen,'INDEX','301','SPORT INDEX');
 
-    // Competition switcher
-    const compRow = row('comp-switcher');
-    Object.entries(COMP_CONFIG).forEach(([code, cfg])=>{
-      const btn = el('button', 'comp-btn'+(code===currentComp?' active':''), cfg.short);
-      btn.addEventListener('click', ()=>switchComp(code));
-      compRow.appendChild(btn);
-    });
-    screen.appendChild(compRow);
+    // Competition switcher now rendered by buildHeader on every page
 
     const compName = el('div','comp-name', (COMP_CONFIG[currentComp]||{}).name || currentComp);
     screen.appendChild(compName);
@@ -1289,10 +1293,8 @@ const Data = (() => {
 
   // ---------- competition switching ----------
   const COMP_CONFIG = {
-    ELC: { name: 'CHAMPIONSHIP',     short: 'CHAMP',  type: 'league'     },
-    PL:  { name: 'PREMIER LEAGUE',   short: 'PL',     type: 'league'     },
-    WC:  { name: 'WORLD CUP',        short: 'WC',     type: 'tournament' },
-    CL:  { name: 'CHAMPIONS LEAGUE', short: 'CL',     type: 'league'     },
+    PL:  { name: 'PREMIER LEAGUE',   short: 'PL',    type: 'league' },
+    ELC: { name: 'CHAMPIONSHIP',     short: 'CHAMP', type: 'league' },
   };
 
   async function switchComp(code) {
