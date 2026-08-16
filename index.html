@@ -144,13 +144,25 @@
   .table-row.head span{ color:var(--cyan); }
   .table-divider{ display:block; height:2px; padding:0; margin:3px 0; }
   .table-divider.auto{ background:var(--green); }
+  .table-divider.green{ background:var(--green); }
+  .table-divider.yellow{ background:var(--yellow); }
+  .table-divider.red{ background:var(--red); }
   .table-divider.po{ background:var(--cyan); }
   .table-divider.rel{ background:var(--red); }
-  .legend{ margin-top:8px; font-size:.74em; color:#999; flex-wrap:wrap; }
-  .legend-swatch{ display:inline-block; width:10px; height:10px; margin:0 4px 0 0; }
+  .legend{ margin-top:8px; font-size:.74em; color:#999; flex-wrap:wrap; gap:6px; }
+  .legend-swatch{ display:inline-block; width:10px; height:10px; margin:0 4px 0 0; vertical-align:middle; }
   .legend-swatch.auto{ background:var(--green); }
-  .legend-swatch.po{ background:var(--cyan); margin-left:10px; }
-  .legend-swatch.rel{ background:var(--red); margin-left:10px; }
+  .legend-swatch.green{ background:var(--green); }
+  .legend-swatch.yellow{ background:var(--yellow); }
+  .legend-swatch.red{ background:var(--red); }
+  .legend-label{ color:#999; font-size:.74em; }
+  /* Competition switcher on 301 index */
+  .comp-switcher{ display:flex; gap:8px; margin:10px 0 4px; flex-wrap:wrap; }
+  .comp-btn{ background:none; border:1px solid #444; color:#888;
+    font-family:inherit; font-size:.82em; letter-spacing:0.08em;
+    padding:4px 10px; cursor:pointer; }
+  .comp-btn.active{ border-color:var(--yellow); color:var(--yellow); }
+  .comp-name{ color:var(--green); font-size:.82em; letter-spacing:0.06em; margin-bottom:10px; }
 
   /* Fixtures */
   .fixture-row .time{ width:3.6em; color:var(--yellow); flex:0 0 auto; }
@@ -362,7 +374,11 @@
 const Data = (() => {
   // ---- CONFIG -------------------------------------------------------------
   const USE_LIVE = true;
-  const BACKEND_URL = 'https://page302-backend.onrender.com/feed';
+  const BACKEND_BASE = 'https://page302-backend.onrender.com/feed';
+
+  function feedUrl(comp) {
+    return BACKEND_BASE + '?comp=' + encodeURIComponent(comp || 'ELC');
+  }
 
   // ---- MOCK DATA: WORLD CUP 2026, matchday around 14 June ------------------
   // Times are UK time (BST). Finished scores are real results.
@@ -401,61 +417,52 @@ const Data = (() => {
   // ---- LOCAL CACHE --------------------------------------------------------
   // Persist the last successful /feed response so the app can show real
   // match data instantly on next open, even before the backend responds.
-  const CACHE_KEY = 'p302_feedCache';
-  const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // discard if >24h old
+  const CACHE_PREFIX = 'p302_feedCache_';
+  const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-  function saveCache(data) {
+  function saveCache(data, comp) {
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({
-        data,
-        savedAt: Date.now()
-      }));
-    } catch(e) {} // quota exceeded or private mode — silently ignore
+      localStorage.setItem(CACHE_PREFIX+(comp||'ELC'), JSON.stringify({ data, savedAt: Date.now() }));
+    } catch(e) {}
   }
 
-  function readCache() {
+  function readCache(comp) {
     try {
-      const raw = localStorage.getItem(CACHE_KEY);
+      const key = CACHE_PREFIX+(comp||'ELC');
+      const raw = localStorage.getItem(key);
       if (!raw) return null;
       const { data, savedAt } = JSON.parse(raw);
-      if (Date.now() - savedAt > CACHE_MAX_AGE_MS) {
-        localStorage.removeItem(CACHE_KEY);
-        return null;
-      }
+      if (Date.now() - savedAt > CACHE_MAX_AGE_MS) { localStorage.removeItem(key); return null; }
       return data;
     } catch(e) { return null; }
   }
 
   // ---- LIVE FETCH ---------------------------------------------------------
-  async function fetchLive(timeoutMs){
-    // Free-tier hosts (e.g. Render) can take 20-40s to wake from sleep on a
-    // cold start. Give it real room rather than aborting too early and
-    // silently substituting mock data (which then misleads the day-nav into
-    // showing "NO MATCHES THIS DAY" because the mock dates don't match today).
+  async function fetchLive(timeoutMs, comp){
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs || 35000);
     try {
-      const res = await fetch(BACKEND_URL, { headers: { 'Accept': 'application/json' }, signal: controller.signal });
+      const res = await fetch(feedUrl(comp), { headers: { 'Accept': 'application/json' }, signal: controller.signal });
       if (!res.ok) throw new Error('backend ' + res.status);
       const data = await res.json();
-      return JSON.parse(JSON.stringify(data)); // ensure plain cloneable object
+      return JSON.parse(JSON.stringify(data));
     } finally {
       clearTimeout(timer);
     }
   }
 
   // ---- PUBLIC API ---------------------------------------------------------
-  async function getFeed() {
+  async function getFeed(comp) {
     if (USE_LIVE) {
       try {
-        const data = await fetchLive(35000);
-        saveCache(data);
+        const data = await fetchLive(35000, comp);
+        saveCache(data, comp);
         return data;
       } catch (e) {
         console.warn('live fetch failed, retrying once:', e);
         try {
-          const data = await fetchLive(15000);
-          saveCache(data);
+          const data = await fetchLive(15000, comp);
+          saveCache(data, comp);
           return data;
         } catch (e2) {
           console.warn('live fetch retry failed, falling back to mock:', e2);
@@ -474,6 +481,7 @@ const Data = (() => {
 <script>
   // ---------- state ----------
   let currentPage = 302;
+  let currentComp = 'ELC'; // active competition code
   let classicMode = false;
   const expandedMatches = {};
   let classicPaged = false;       // false = league picker, true = showing pages
@@ -873,49 +881,80 @@ const Data = (() => {
     const screen = document.getElementById('screen');
     if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
     screen.innerHTML='';
-    buildHeader(screen,'TABLES','303','GROUP STANDINGS');
+    const subtitle = isLeague() ? (COMP_CONFIG[currentComp]||{}).name||'LEAGUE TABLE' : 'GROUP STANDINGS';
+    buildHeader(screen,'TABLES','303', subtitle);
 
-    // Build set of team names currently IN_PLAY or PAUSED
     const liveTeams = new Set();
     (dataset.matches||[]).forEach(m=>{
       if(m.status==='IN_PLAY'||m.status==='PAUSED'){
-        liveTeams.add(m.home);
-        liveTeams.add(m.away);
+        liveTeams.add(m.home); liveTeams.add(m.away);
       }
     });
 
-    // group rows by their group letter; within each, top 2 marked as qualifying
-    const groups = {};
-    dataset.table.forEach(t=>{ (groups[t.group||'-'] = groups[t.group||'-'] || []).push(t); });
+    if(isLeague()){
+      // Single league table — show P/W/D/L/GD/PTS with zone dividers
+      const sorted = [...(dataset.table||[])].sort((a,b)=>(b.pts-a.pts)||((b.gd||0)-(a.gd||0)));
+      if(!sorted.length){ screen.appendChild(el('div','row hint','NO TABLE DATA YET')); applyStagger(screen); return; }
 
-    Object.keys(groups).sort().forEach(g=>{
-      screen.appendChild(el('div','section-title','GROUP '+g));
       const head = row('table-row head');
-      ['pos|','name|TEAM','stat|P','stat|GD','pts|PTS'].forEach(s=>{
+      ['pos|','name|TEAM','stat|P','stat|W','stat|D','stat|L','stat|GD','pts|PTS'].forEach(s=>{
         const [c,t]=s.split('|'); head.appendChild(el('span',c,t));
       });
       screen.appendChild(head);
-      groups[g].forEach((t,idx)=>{
-        if(idx===2) screen.appendChild(el('div','row table-divider auto'));
+
+      sorted.forEach((t,idx)=>{
+        if(idx===2)  screen.appendChild(el('div','row table-divider green',''));   // auto promotion
+        if(idx===6)  screen.appendChild(el('div','row table-divider yellow','')); // play-offs
+        if(idx===sorted.length-3) screen.appendChild(el('div','row table-divider red',''));  // relegation
         const r = row('table-row');
         r.appendChild(el('span','pos', idx+1));
         const nameCell = el('span','name'+(idx%2===1?' alt':''), t.name);
-        if(liveTeams.has(t.name)){
-          const dot = el('span','live-dot','');
-          nameCell.appendChild(dot);
-        }
+        if(liveTeams.has(t.name)){ nameCell.appendChild(el('span','live-dot','')); }
         r.appendChild(nameCell);
-        r.appendChild(el('span','stat', t.p));
-        r.appendChild(el('span','stat', t.gd));
-        r.appendChild(el('span','pts', t.pts));
+        r.appendChild(el('span','stat', t.p  ??''));
+        r.appendChild(el('span','stat', t.w  ??''));
+        r.appendChild(el('span','stat', t.d  ??''));
+        r.appendChild(el('span','stat', t.l  ??''));
+        r.appendChild(el('span','stat', t.gd ??''));
+        r.appendChild(el('span','pts',  t.pts??''));
         screen.appendChild(r);
       });
-    });
 
-    const lg = row('legend');
-    lg.appendChild(el('span','legend-swatch auto'));
-    lg.appendChild(el('span','','TOP 2 QUALIFY (+ BEST THIRDS)'));
-    screen.appendChild(lg);
+      const lg = row('legend');
+      [['green','AUTO PROMOTION'],['yellow','PLAY-OFFS'],['red','RELEGATION']].forEach(([c,l])=>{
+        lg.appendChild(el('span','legend-swatch '+c)); lg.appendChild(el('span','legend-label',l+'  '));
+      });
+      screen.appendChild(lg);
+
+    } else {
+      // Tournament grouped table
+      const groups = {};
+      dataset.table.forEach(t=>{ (groups[t.group||'-']=groups[t.group||'-']||[]).push(t); });
+      Object.keys(groups).sort().forEach(g=>{
+        screen.appendChild(el('div','section-title','GROUP '+g));
+        const head = row('table-row head');
+        ['pos|','name|TEAM','stat|P','stat|GD','pts|PTS'].forEach(s=>{
+          const [c,t]=s.split('|'); head.appendChild(el('span',c,t));
+        });
+        screen.appendChild(head);
+        groups[g].forEach((t,idx)=>{
+          if(idx===2) screen.appendChild(el('div','row table-divider auto'));
+          const r = row('table-row');
+          r.appendChild(el('span','pos', idx+1));
+          const nameCell = el('span','name'+(idx%2===1?' alt':''), t.name);
+          if(liveTeams.has(t.name)){ nameCell.appendChild(el('span','live-dot','')); }
+          r.appendChild(nameCell);
+          r.appendChild(el('span','stat', t.p));
+          r.appendChild(el('span','stat', t.gd));
+          r.appendChild(el('span','pts', t.pts));
+          screen.appendChild(r);
+        });
+      });
+      const lg = row('legend');
+      lg.appendChild(el('span','legend-swatch auto'));
+      lg.appendChild(el('span','','TOP 2 QUALIFY (+ BEST THIRDS)'));
+      screen.appendChild(lg);
+    }
     applyStagger(screen);
   }
 
@@ -929,7 +968,8 @@ const Data = (() => {
     const STAGE_LABELS = {
       GROUP_STAGE:'GROUP STAGE', LAST_32:'ROUND OF 32', LAST_16:'ROUND OF 16',
       QUARTER_FINALS:'QUARTER-FINALS', SEMI_FINALS:'SEMI-FINALS',
-      THIRD_PLACE:'THIRD PLACE PLAY-OFF', FINAL:'FINAL'
+      THIRD_PLACE:'THIRD PLACE PLAY-OFF', FINAL:'FINAL',
+      REGULAR_SEASON:'', PLAYOFFS:'PLAY-OFFS', PROMOTION_PLAYOFFS:'PLAY-OFFS',
     };
 
     // All upcoming matches sorted by kickoff
@@ -1039,7 +1079,20 @@ const Data = (() => {
     const screen = document.getElementById('screen');
     screen.innerHTML='';
     buildHeader(screen,'INDEX','301','SPORT INDEX');
-    [['301','THIS INDEX'],['302','LIVE SCORES'],['303','LEAGUE TABLE'],['304','FIXTURES']]
+
+    // Competition switcher
+    const compRow = row('comp-switcher');
+    Object.entries(COMP_CONFIG).forEach(([code, cfg])=>{
+      const btn = el('button', 'comp-btn'+(code===currentComp?' active':''), cfg.short);
+      btn.addEventListener('click', ()=>switchComp(code));
+      compRow.appendChild(btn);
+    });
+    screen.appendChild(compRow);
+
+    const compName = el('div','comp-name', (COMP_CONFIG[currentComp]||{}).name || currentComp);
+    screen.appendChild(compName);
+
+    [['302','LIVE SCORES'],['303','LEAGUE TABLE'],['304','FIXTURES']]
     .forEach(([n,l])=>{
       const r = row('index-row');
       const b = el('button','num-btn',n); b.addEventListener('click',()=>renderPage(+n));
@@ -1234,7 +1287,34 @@ const Data = (() => {
   async function persist(k,v){ try{ localStorage.setItem('p302_'+k, v); }catch(e){} }
   function readPersist(k){ try{ return localStorage.getItem('p302_'+k); }catch(e){ return null; } }
 
-  // ---------- fetching banner (shown while stale cache is on screen) ----------
+  // ---------- competition switching ----------
+  const COMP_CONFIG = {
+    ELC: { name: 'CHAMPIONSHIP',     short: 'CHAMP',  type: 'league'     },
+    PL:  { name: 'PREMIER LEAGUE',   short: 'PL',     type: 'league'     },
+    WC:  { name: 'WORLD CUP',        short: 'WC',     type: 'tournament' },
+    CL:  { name: 'CHAMPIONS LEAGUE', short: 'CL',     type: 'league'     },
+  };
+
+  async function switchComp(code) {
+    if(code === currentComp) return;
+    currentComp = code;
+    try{ persist('lastComp', code); }catch(e){}
+    dataset = null; loadError = false;
+    // Try cache first for instant switch
+    const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(code) : null;
+    if(cached){ dataset = cached; }
+    renderPage(302);
+    showFetchingBanner();
+    // Fetch fresh data for new comp
+    try{
+      if(typeof Data !== 'undefined' && Data.getFeed){
+        const fresh = await Data.getFeed(code);
+        if(fresh){ dataset = fresh; loadError = false; hideFetchingBanner(); if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
+      }
+    }catch(e){ console.warn('comp switch fetch failed', e); hideFetchingBanner(); }
+  }
+
+  function isLeague(){ return (COMP_CONFIG[currentComp]||{}).type === 'league'; }
   let fetchingBanner = null;
 
   function showFetchingBanner(){
@@ -1265,6 +1345,8 @@ const Data = (() => {
   async function start(){
     // restore prefs
     if(readPersist('classicMode')==='1') classicMode = true;
+    const savedComp = readPersist('lastComp');
+    if(savedComp && COMP_CONFIG[savedComp]) currentComp = savedComp;
 
     const bootAndRender = (skipBoot) => {
       let anyLive = false;
@@ -1281,7 +1363,7 @@ const Data = (() => {
     };
 
     // ---- Step 1: show cached data instantly if available ----
-    const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache() : null;
+    const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(currentComp) : null;
     let initiallyFromCache = false;
     if(cached){
       dataset = cached;
@@ -1307,7 +1389,7 @@ const Data = (() => {
     };
 
     if(typeof Data !== 'undefined' && Data.getFeed){
-      Data.getFeed()
+      Data.getFeed(currentComp)
         .then(data => onFetched(data, false))
         .catch(e => { console.warn('initial data load failed', e); onFetched(null, true); });
     } else {
@@ -1315,16 +1397,12 @@ const Data = (() => {
     }
 
     // ---- Step 3: safety net — if no cache and fetch is slow, show TUNING IN ----
-    // If we already showed cached data, instead show the "retrieving" banner.
     setTimeout(() => {
       if(initiallyFromCache){
-        // Show banner under the (already-rendered) cached content
         if(currentPage===302||currentPage===303||currentPage===304) showFetchingBanner();
       } else if(!fetched){
-        // No cache, fetch still pending — show UI shell with TUNING IN
         fetched = true;
         bootAndRender(false);
-        // And show the banner once the page has rendered
         setTimeout(showFetchingBanner, 100);
       }
     }, 1500);
@@ -1334,16 +1412,16 @@ const Data = (() => {
       if(document.visibilityState !== 'visible') return;
       try{
         if(typeof Data==='undefined' || !Data.getFeed) return;
-        const fresh = await Data.getFeed();
+        const fresh = await Data.getFeed(currentComp);
         if(fresh){ dataset = fresh; loadError = false; if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
       }catch(e){}
     });
 
-    // periodic refresh (every 60s) — in mock mode this just re-renders
+    // periodic refresh (every 60s)
     setInterval(async ()=>{
       try{
         if(typeof Data==='undefined' || !Data.getFeed) return;
-        const fresh = await Data.getFeed();
+        const fresh = await Data.getFeed(currentComp);
         if(fresh){ dataset = fresh; loadError=false; if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
       }catch(e){}
     }, 60000);
