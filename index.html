@@ -115,6 +115,21 @@
   .match.scorers .team{ flex:1 1 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .match .score{ flex:0 0 3.5em; text-align:center; color:var(--yellow); font-weight:bold; }
   .match .status{ flex:0 0 3em; text-align:right; }
+  .match .star-btn{ flex:0 0 1.6em; text-align:right; background:none; border:none;
+    font:inherit; cursor:pointer; color:#444; font-size:0.9em; padding:0; line-height:1; }
+  .match .star-btn.starred{ color:var(--yellow); }
+  .match.starred-match .team{ color:var(--white); }
+  .starred-header{ color:var(--yellow); font-size:0.78em; letter-spacing:0.1em;
+    margin:6px 0 3px; display:flex; align-items:center; gap:6px; }
+  .starred-header::after{ content:''; flex:1; border-bottom:1px solid #333; }
+  .starred-divider{ height:1px; background:#333; margin:8px 0 6px; }
+  /* Teams management page */
+  .team-row{ display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; }
+  .team-row .team-name{ flex:1; color:var(--white); }
+  .team-row .team-comp{ color:#666; font-size:0.78em; }
+  .team-row .team-star{ color:#444; font-size:1em; }
+  .team-row.starred .team-name{ color:var(--cyan); }
+  .team-row.starred .team-star{ color:var(--yellow); }
   .status-ft{ color:var(--green); }
   .status-live{ color:var(--red); animation:flash 1s steps(2,start) infinite; }
   @keyframes livepulse{ 0%,100%{opacity:1;} 50%{opacity:0.15;} }
@@ -147,6 +162,9 @@
   .table-divider.green{ background:var(--green); }
   .table-divider.yellow{ background:var(--yellow); }
   .table-divider.red{ background:var(--red); }
+  .table-divider.blue{ background:#4488ff; }
+  .table-divider.cyan{ background:var(--cyan); }
+  .table-divider.gold{ background:#ffd700; }
   .table-divider.po{ background:var(--cyan); }
   .table-divider.rel{ background:var(--red); }
   .legend{ margin-top:8px; font-size:.74em; color:#999; flex-wrap:wrap; gap:6px; }
@@ -155,6 +173,9 @@
   .legend-swatch.green{ background:var(--green); }
   .legend-swatch.yellow{ background:var(--yellow); }
   .legend-swatch.red{ background:var(--red); }
+  .legend-swatch.blue{ background:#4488ff; }
+  .legend-swatch.cyan{ background:var(--cyan); }
+  .legend-swatch.gold{ background:#ffd700; }
   .legend-label{ color:#999; font-size:.74em; }
   /* Competition switcher on 301 index */
   .comp-switcher{ display:flex; gap:8px; margin:10px 0 4px; flex-wrap:wrap; }
@@ -288,7 +309,7 @@
   /* Bottom controls */
   .controls{ position:fixed; left:0; right:0; bottom:0;
     background:var(--black); padding-bottom:env(safe-area-inset-bottom); }
-  .fastext{ display:grid; grid-template-columns:repeat(4,1fr); }
+  .fastext{ display:grid; grid-template-columns:repeat(5,1fr); }
   .fb{ font-family:'VT323',monospace; font-size:clamp(14px,4vw,17px); padding:12px 4px;
     border:none; font-weight:bold; letter-spacing:0.05em; cursor:pointer; }
   .fb.red{ background:var(--red); color:#fff; }
@@ -320,10 +341,11 @@
   <div id="screen"><div class="notice">TUNING IN&hellip;</div></div>
   <div class="controls">
     <div class="fastext">
-      <button class="fb red"    data-page="301">301 INDEX</button>
-      <button class="fb green"  data-page="302">302 SCORES</button>
-      <button class="fb yellow" data-page="303">303 TABLE</button>
+      <button class="fb red"    data-page="301">301 IDX</button>
+      <button class="fb green"  data-page="302">302 SCR</button>
+      <button class="fb yellow" data-page="303">303 TBL</button>
       <button class="fb blue"   data-page="304">304 FIX</button>
+      <button class="fb magenta" data-page="305">305 ★</button>
     </div>
     <!-- 305 LIVE TICKER parked for tonight: currently hardcoded/fictional
          commentary, jarring next to real scores. renderTicker() and the
@@ -482,6 +504,46 @@ const Data = (() => {
   // ---------- state ----------
   let currentPage = 302;
   let currentComp = 'ELC'; // active competition code
+
+  // ---- Favourites ---------------------------------------------------------
+  // starredTeams: Set of team names (uppercased) — persists all season
+  // starredMatches: Set of match IDs — one-off, for upcoming/live games only
+  let starredTeams   = new Set();
+  let starredMatches = new Set();
+
+  function loadFavourites(){
+    try{
+      const t = localStorage.getItem('p302_starTeams');
+      if(t) starredTeams = new Set(JSON.parse(t));
+      const m = localStorage.getItem('p302_starMatches');
+      if(m) starredMatches = new Set(JSON.parse(m));
+    }catch(e){}
+  }
+  function saveFavourites(){
+    try{
+      localStorage.setItem('p302_starTeams',   JSON.stringify([...starredTeams]));
+      localStorage.setItem('p302_starMatches', JSON.stringify([...starredMatches]));
+    }catch(e){}
+  }
+  function toggleTeamStar(name){
+    if(starredTeams.has(name)) starredTeams.delete(name);
+    else starredTeams.add(name);
+    saveFavourites();
+  }
+  function toggleMatchStar(id){
+    const sid = String(id);
+    if(starredMatches.has(sid)) starredMatches.delete(sid);
+    else starredMatches.add(sid);
+    saveFavourites();
+  }
+  function isMatchStarred(m){
+    // A match is "starred" if its ID is in starredMatches OR either team is in starredTeams
+    return starredMatches.has(String(m.id)) || starredTeams.has(m.home) || starredTeams.has(m.away);
+  }
+  function canStarMatch(m){
+    // Only star upcoming or live matches — not finished ones
+    return m.status==='TIMED'||m.status==='SCHEDULED'||m.status==='IN_PLAY'||m.status==='PAUSED';
+  }
   let classicMode = false;
   const expandedMatches = {};
   let classicPaged = false;       // false = league picker, true = showing pages
@@ -635,14 +697,27 @@ const Data = (() => {
     return el('span','status status-time', formatLocalTime(m.kickoff));
   }
 
-  function matchRow(m, key, tappable){
+  function matchRow(m, key, tappable, showStar){
     const r = row('match');
     if(key) r.id = key;
     const upcoming = m.status === 'TIMED' || m.status === 'SCHEDULED';
+    if(isMatchStarred(m)) r.classList.add('starred-match');
     r.appendChild(el('span','team', m.home));
     r.appendChild(el('span','score', upcoming ? 'v' : (m.hs+'-'+m.as)));
     r.appendChild(el('span','team', m.away));
     r.appendChild(statusCell(m));
+    // Star button — only in modern mode, only for upcoming/live matches
+    if(showStar && canStarMatch(m)){
+      const starred = starredMatches.has(String(m.id));
+      const starBtn = el('button','star-btn'+(starred?' starred':''), starred?'★':'☆');
+      starBtn.title = starred ? 'Remove from favourites' : 'Add to favourites';
+      starBtn.addEventListener('click', e => {
+        e.stopPropagation(); // don't expand the match
+        toggleMatchStar(m.id);
+        renderScores();
+      });
+      r.appendChild(starBtn);
+    }
     if(tappable){
       r.classList.add('tappable');
       if(expandedMatches[key]) r.classList.add('expanded');
@@ -778,12 +853,29 @@ const Data = (() => {
     return btn;
   }
 
+  function renderMatchBlock(screen, m, i, prefix, showStar){
+    const key = prefix+i;
+    const started = m.status==='IN_PLAY'||m.status==='PAUSED'||m.status==='FINISHED';
+    const tappable = started || hasLineup(m);
+    screen.appendChild(matchRow(m, key, tappable, showStar));
+    if(expandedMatches[key]){
+      if(!started && hasLineup(m)){
+        lineupRows(m).forEach(r=>screen.appendChild(r));
+      } else {
+        scorerRows(m).forEach(r=>screen.appendChild(r));
+        if(hasLineup(m)){
+          screen.appendChild(el('div','row hint lineup-sep','— LINEUPS —'));
+          lineupRows(m).forEach(r=>screen.appendChild(r));
+        }
+      }
+    }
+  }
+
   function renderModern(){
     const screen = document.getElementById('screen');
     screen.innerHTML='';
     buildHeader(screen,'FOOTBALL','302', dataset.competition, buildToggle());
 
-    // which local-calendar days actually have matches, for clamping nav
     const dateKeys = [...new Set(dataset.matches.map(matchDateKey).filter(Boolean))].sort();
     const today = todayReference();
     const target = new Date(today);
@@ -803,6 +895,30 @@ const Data = (() => {
     nav.appendChild(prevBtn); nav.appendChild(label); nav.appendChild(nextBtn);
     screen.appendChild(nav);
 
+    // ---- Starred section: matches from ALL competitions that are starred ----
+    // Pull starred matches from all cached comp data, not just the current day/comp
+    const allMatches = [];
+    Object.keys(COMP_CONFIG).forEach(code => {
+      const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(code) : null;
+      if(cached && cached.matches) allMatches.push(...cached.matches.map(m=>({...m,_comp:code})));
+    });
+    // Also include current dataset matches (may be fresher than cache)
+    (dataset.matches||[]).forEach(m=>{
+      if(!allMatches.find(x=>x.id===m.id)) allMatches.push({...m,_comp:currentComp});
+    });
+
+    const starredNow = allMatches.filter(m =>
+      isMatchStarred(m) && (m.status==='IN_PLAY'||m.status==='PAUSED'||m.status==='TIMED'||m.status==='SCHEDULED')
+    );
+
+    if(starredNow.length){
+      const hdr = el('div','starred-header','★ YOUR TEAMS');
+      screen.appendChild(hdr);
+      starredNow.forEach((m,i) => renderMatchBlock(screen, m, i, 'star-', true));
+      screen.appendChild(el('div','starred-divider'));
+    }
+
+    // ---- Regular matches for current day ----
     const dayMatches = dataset.matches.filter(m => matchDateKey(m) === targetKey);
 
     if(!dayMatches.length){
@@ -810,35 +926,64 @@ const Data = (() => {
     } else {
       let lastGroup = null;
       dayMatches.forEach((m,i)=>{
-        const key = 'd'+dayOffset+'-m'+i; // day-scoped key so expand state doesn't collide across days
+        const key = 'd'+dayOffset+'-m'+i;
+        // Group header for tournament mode
         if(m.group && m.group !== lastGroup){
           screen.appendChild(el('div','section-title','GROUP '+m.group));
           lastGroup = m.group;
         }
-        const started = m.status==='IN_PLAY'||m.status==='PAUSED'||m.status==='FINISHED';
-        const tappable = started || hasLineup(m);
-        screen.appendChild(matchRow(m,key,tappable));
-        if(expandedMatches[key]){
-          if(!started && hasLineup(m)){
-            // Pre-match with lineups: show team sheets only
-            lineupRows(m).forEach(r=>screen.appendChild(r));
-          } else {
-            // Started: scorers first, then lineups if available
-            scorerRows(m).forEach(r=>screen.appendChild(r));
-            if(hasLineup(m)){
-              const sep = el('div','row hint lineup-sep','— LINEUPS —');
-              screen.appendChild(sep);
-              lineupRows(m).forEach(r=>screen.appendChild(r));
-            }
-          }
-        }
+        renderMatchBlock(screen, m, i, 'd'+dayOffset+'-', true);
       });
       screen.appendChild(el('div','row hint','SCORERS HIDDEN — TAP A MATCH TO REVEAL'));
     }
     applyStagger(screen);
   }
 
-  function renderClassicPicker(){
+  function renderTeams(){
+    clearClassicTimer();
+    const screen = document.getElementById('screen');
+    screen.innerHTML='';
+    buildHeader(screen,'TEAMS','305','MY TEAMS');
+
+    // Collect all unique teams across all cached competitions
+    const allTeams = new Map(); // name -> comp label
+    Object.entries(COMP_CONFIG).forEach(([code, cfg])=>{
+      const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(code) : null;
+      const matches = (cached && cached.matches) || (code===currentComp && dataset ? dataset.matches : []);
+      (matches||[]).forEach(m=>{
+        if(m.home && m.home !== 'TBD') allTeams.set(m.home, cfg.short);
+        if(m.away && m.away !== 'TBD') allTeams.set(m.away, cfg.short);
+      });
+    });
+
+    if(!allTeams.size){
+      screen.appendChild(el('div','row hint','NO TEAM DATA YET — LOAD SCORES FIRST'));
+      applyStagger(screen); return;
+    }
+
+    // Sort: starred first, then alphabetical
+    const sorted = [...allTeams.entries()].sort(([a],[b])=>{
+      const as = starredTeams.has(a), bs = starredTeams.has(b);
+      if(as && !bs) return -1; if(!as && bs) return 1;
+      return a.localeCompare(b);
+    });
+
+    screen.appendChild(el('div','row hint','TAP A TEAM TO STAR THEM'));
+
+    sorted.forEach(([name, comp])=>{
+      const starred = starredTeams.has(name);
+      const r = row('team-row'+(starred?' starred':''));
+      r.appendChild(el('span','team-star', starred?'★':'☆'));
+      r.appendChild(el('span','team-name', name));
+      r.appendChild(el('span','team-comp', comp));
+      r.addEventListener('click', ()=>{
+        toggleTeamStar(name);
+        renderTeams();
+      });
+      screen.appendChild(r);
+    });
+    applyStagger(screen);
+  }
     const screen = document.getElementById('screen');
     screen.innerHTML='';
     buildHeader(screen,'FOOTBALL','302','SELECT LEAGUE', buildToggle());
@@ -903,7 +1048,8 @@ const Data = (() => {
     });
 
     if(isLeague()){
-      // Single league table — show P/W/D/L/GD/PTS with zone dividers
+      const cfg = COMP_CONFIG[currentComp] || {};
+      const zones = cfg.zones || [];
       const sorted = [...(dataset.table||[])].sort((a,b)=>(b.pts-a.pts)||((b.gd||0)-(a.gd||0)));
       if(!sorted.length){ screen.appendChild(el('div','row hint','NO TABLE DATA YET')); applyStagger(screen); return; }
 
@@ -913,12 +1059,21 @@ const Data = (() => {
       });
       screen.appendChild(head);
 
+      // Build a set of positions where a divider should appear (after that position)
+      const dividerAfter = new Map(); // position -> color
+      zones.forEach(z => {
+        // Divider after the last position in each zone
+        dividerAfter.set(z.to, z.color);
+      });
+
       sorted.forEach((t,idx)=>{
-        if(idx===2)  screen.appendChild(el('div','row table-divider green',''));   // auto promotion
-        if(idx===6)  screen.appendChild(el('div','row table-divider yellow','')); // play-offs
-        if(idx===sorted.length-3) screen.appendChild(el('div','row table-divider red',''));  // relegation
+        const pos = idx + 1;
+        // Divider BEFORE this row if previous position had a zone end
+        if(pos > 1 && dividerAfter.has(pos - 1)){
+          screen.appendChild(el('div','row table-divider '+dividerAfter.get(pos-1),''));
+        }
         const r = row('table-row');
-        r.appendChild(el('span','pos', idx+1));
+        r.appendChild(el('span','pos', pos));
         const nameCell = el('span','name'+(idx%2===1?' alt':''), t.name);
         if(liveTeams.has(t.name)){ nameCell.appendChild(el('span','live-dot','')); }
         r.appendChild(nameCell);
@@ -931,11 +1086,15 @@ const Data = (() => {
         screen.appendChild(r);
       });
 
-      const lg = row('legend');
-      [['green','AUTO PROMOTION'],['yellow','PLAY-OFFS'],['red','RELEGATION']].forEach(([c,l])=>{
-        lg.appendChild(el('span','legend-swatch '+c)); lg.appendChild(el('span','legend-label',l+'  '));
-      });
-      screen.appendChild(lg);
+      // Legend
+      if(zones.length){
+        const lg = row('legend');
+        zones.forEach(z=>{
+          lg.appendChild(el('span','legend-swatch '+z.color));
+          lg.appendChild(el('span','legend-label', z.label+'  '));
+        });
+        screen.appendChild(lg);
+      }
 
     } else {
       // Tournament grouped table
@@ -1096,7 +1255,7 @@ const Data = (() => {
     const compName = el('div','comp-name', (COMP_CONFIG[currentComp]||{}).name || currentComp);
     screen.appendChild(compName);
 
-    [['302','LIVE SCORES'],['303','LEAGUE TABLE'],['304','FIXTURES']]
+    [['302','LIVE SCORES'],['303','LEAGUE TABLE'],['304','FIXTURES'],['305','★ MY TEAMS']]
     .forEach(([n,l])=>{
       const r = row('index-row');
       const b = el('button','num-btn',n); b.addEventListener('click',()=>renderPage(+n));
@@ -1149,7 +1308,7 @@ const Data = (() => {
   }
 
   // ---------- routing ----------
-  const renderers = { 301:renderIndex, 302:renderScores, 303:renderTable, 304:renderFixtures, 305:renderTicker };
+  const renderers = { 301:renderIndex, 302:renderScores, 303:renderTable, 304:renderFixtures, 305:renderTeams };
   function maybeShowA2HS(screen){
     // Only relevant on iOS Safari running in browser (not already installed as PWA)
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -1293,8 +1452,26 @@ const Data = (() => {
 
   // ---------- competition switching ----------
   const COMP_CONFIG = {
-    PL:  { name: 'PREMIER LEAGUE',   short: 'PL',    type: 'league' },
-    ELC: { name: 'CHAMPIONSHIP',     short: 'CHAMP', type: 'league' },
+    PL:  {
+      name: 'PREMIER LEAGUE', short: 'PL', type: 'league',
+      zones: [
+        { from: 1, to: 1,  color: 'gold',   label: 'CHAMPIONS'        },
+        { from: 2, to: 4,  color: 'blue',   label: 'CHAMPIONS LEAGUE' },
+        { from: 5, to: 5,  color: 'cyan',   label: 'EUROPA LEAGUE'    },
+        { from: 6, to: 6,  color: 'cyan',   label: 'CONFERENCE LEAGUE' },
+        { from: 18,to: 20, color: 'red',    label: 'RELEGATION'       },
+      ],
+      totalTeams: 20,
+    },
+    ELC: {
+      name: 'CHAMPIONSHIP', short: 'CHAMP', type: 'league',
+      zones: [
+        { from: 1, to: 2,  color: 'green',  label: 'AUTO PROMOTION'   },
+        { from: 3, to: 6,  color: 'yellow', label: 'PLAY-OFFS'        },
+        { from: 22,to: 24, color: 'red',    label: 'RELEGATION'       },
+      ],
+      totalTeams: 24,
+    },
   };
 
   async function switchComp(code) {
@@ -1349,18 +1526,23 @@ const Data = (() => {
     if(readPersist('classicMode')==='1') classicMode = true;
     const savedComp = readPersist('lastComp');
     if(savedComp && COMP_CONFIG[savedComp]) currentComp = savedComp;
+    loadFavourites();
 
     const bootAndRender = (skipBoot) => {
       let anyLive = false;
       try{ anyLive = !!(dataset && dataset.matches && dataset.matches.some(m=>m.status==='IN_PLAY'||m.status==='PAUSED')); }catch(e){}
+
+      // Smart default: go to fixtures if nothing is live today, scores if something is
+      const defaultPage = anyLive ? 302 : 304;
+
       const today = new Date().toLocaleDateString();
       const lastBoot = readPersist('lastBoot');
       const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
       if(!skipBoot && !reduce && !anyLive && lastBoot!==today){
         try{ persist('lastBoot', today); }catch(e){}
-        playBoot(()=>renderPage(302));
+        playBoot(()=>renderPage(defaultPage));
       } else {
-        renderPage(302);
+        renderPage(defaultPage);
       }
     };
 
@@ -1415,7 +1597,13 @@ const Data = (() => {
       try{
         if(typeof Data==='undefined' || !Data.getFeed) return;
         const fresh = await Data.getFeed(currentComp);
-        if(fresh){ dataset = fresh; loadError = false; if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
+        if(fresh){
+          // Only re-render if the data actually changed — prevents the table
+          // animation replaying every time you switch apps and come back.
+          const changed = !dataset || fresh.fetchedAt !== dataset.fetchedAt;
+          dataset = fresh; loadError = false;
+          if(changed && (currentPage===302||currentPage===303||currentPage===304)) renderers[currentPage]();
+        }
       }catch(e){}
     });
 
