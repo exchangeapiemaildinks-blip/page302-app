@@ -831,8 +831,19 @@ const Data = (() => {
   function renderScores(){
     clearClassicTimer();
     const screen = document.getElementById('screen');
-    if(loadError){ screen.innerHTML='<div class="notice">NO SIGNAL — DATA UNAVAILABLE</div>'; return; }
-    if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
+    if(!dataset){
+      screen.innerHTML='';
+      buildHeader(screen,'FOOTBALL','302',currentComp,'');
+      screen.appendChild(el('div','row hint','TUNING IN\u2026 PLEASE WAIT'));
+      return;
+    }
+    if(loadError || (dataset && !dataset.fetchedAt)){
+      screen.innerHTML='';
+      buildHeader(screen,'FOOTBALL','302',currentComp,'');
+      screen.appendChild(el('div','row hint','OFFLINE — DATA UNAVAILABLE'));
+      screen.appendChild(el('div','row hint','CHECK YOUR CONNECTION'));
+      return;
+    }
 
     if(classicMode){
       if(!classicPaged) return renderClassicPicker();
@@ -1538,7 +1549,10 @@ const Data = (() => {
       const today = new Date().toLocaleDateString();
       const lastBoot = readPersist('lastBoot');
       const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-      if(!skipBoot && !reduce && !anyLive && lastBoot!==today){
+      // Only play boot if we have real data to show after it — playing the
+      // animation then landing on TUNING IN is jarring and blocks interaction.
+      const hasData = !!(dataset && dataset.matches && dataset.matches.length > 0);
+      if(!skipBoot && !reduce && !anyLive && lastBoot!==today && hasData){
         try{ persist('lastBoot', today); }catch(e){}
         playBoot(()=>renderPage(defaultPage));
       } else {
