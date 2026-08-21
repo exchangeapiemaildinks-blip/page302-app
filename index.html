@@ -356,7 +356,7 @@
   </div>
 
 <!-- html2canvas only used as a fallback for capturing the page image to share -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
 /*
  * data.js — Page 302 data layer
@@ -501,6 +501,14 @@ const Data = (() => {
 
 </script>
 <script>
+  // Global error handler — catches anything that throws during startup
+  // and displays it on screen so we can diagnose without dev tools.
+  window.onerror = function(msg, src, line, col, err){
+    const s = document.getElementById('screen');
+    if(s) s.innerHTML = '<div class="notice" style="color:red;font-size:0.7em;word-break:break-all">ERR: '+msg+'<br>'+src+'<br>L'+line+'</div>';
+    return false;
+  };
+
   // ---------- state ----------
   let currentPage = 302;
   let currentComp = 'ELC'; // active competition code
@@ -1617,13 +1625,7 @@ const Data = (() => {
       try{
         if(typeof Data==='undefined' || !Data.getFeed) return;
         const fresh = await Data.getFeed(currentComp);
-        if(fresh){
-          // Only re-render if the data actually changed — prevents the table
-          // animation replaying every time you switch apps and come back.
-          const changed = !dataset || fresh.fetchedAt !== dataset.fetchedAt;
-          dataset = fresh; loadError = false;
-          if(changed && (currentPage===302||currentPage===303||currentPage===304)) renderers[currentPage]();
-        }
+        if(fresh){ dataset = fresh; loadError = false; if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
       }catch(e){}
     });
 
