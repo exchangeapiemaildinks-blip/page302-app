@@ -1046,10 +1046,13 @@ const Data = (() => {
   function renderTable(){
     clearClassicTimer();
     const screen = document.getElementById('screen');
-    if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
     screen.innerHTML='';
     const subtitle = isLeague() ? (COMP_CONFIG[currentComp]||{}).name||'LEAGUE TABLE' : 'GROUP STANDINGS';
     buildHeader(screen,'TABLES','303', subtitle);
+    if(!dataset){
+      screen.appendChild(el('div','row hint','TUNING IN\u2026 PLEASE WAIT'));
+      applyStagger(screen); return;
+    }
 
     const liveTeams = new Set();
     (dataset.matches||[]).forEach(m=>{
@@ -1142,9 +1145,12 @@ const Data = (() => {
   function renderFixtures(){
     clearClassicTimer();
     const screen = document.getElementById('screen');
-    if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
     screen.innerHTML='';
     buildHeader(screen,'FIXTURES','304','UPCOMING');
+    if(!dataset){
+      screen.appendChild(el('div','row hint','TUNING IN\u2026 PLEASE WAIT'));
+      applyStagger(screen); return;
+    }
 
     const STAGE_LABELS = {
       GROUP_STAGE:'GROUP STAGE', LAST_32:'ROUND OF 32', LAST_16:'ROUND OF 16',
