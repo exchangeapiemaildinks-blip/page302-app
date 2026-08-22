@@ -501,14 +501,6 @@ const Data = (() => {
 
 </script>
 <script>
-  // Global error handler — catches anything that throws during startup
-  // and displays it on screen so we can diagnose without dev tools.
-  window.onerror = function(msg, src, line, col, err){
-    const s = document.getElementById('screen');
-    if(s) s.innerHTML = '<div class="notice" style="color:red;font-size:0.7em;word-break:break-all">ERR: '+msg+'<br>'+src+'<br>L'+line+'</div>';
-    return false;
-  };
-
   // ---------- state ----------
   let currentPage = 302;
   let currentComp = 'ELC'; // active competition code
@@ -1554,17 +1546,6 @@ const Data = (() => {
     if(savedComp && COMP_CONFIG[savedComp]) currentComp = savedComp;
     loadFavourites();
 
-    // Temporary startup diagnostics — shows on screen so we can see what's happening
-    function dbg(msg){
-      const s = document.getElementById('screen');
-      if(s){
-        let d = document.getElementById('_dbg');
-        if(!d){ d = document.createElement('div'); d.id='_dbg'; d.style.cssText='position:fixed;top:0;left:0;right:0;background:#000;color:#0f0;font-size:11px;padding:4px;z-index:999;font-family:monospace;'; s.parentNode.insertBefore(d,s); }
-        d.textContent = msg;
-      }
-    }
-    dbg('start() called, comp='+currentComp);
-
     const bootAndRender = (skipBoot) => {
       let anyLive = false;
       try{ anyLive = !!(dataset && dataset.matches && dataset.matches.some(m=>m.status==='IN_PLAY'||m.status==='PAUSED')); }catch(e){}
@@ -1588,22 +1569,18 @@ const Data = (() => {
 
     // ---- Step 1: show cached data instantly if available ----
     const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(currentComp) : null;
-    dbg('cache check done, cached='+(!!cached)+', Data='+(typeof Data));
     let initiallyFromCache = false;
     if(cached){
       dataset = cached;
       loadError = false;
       initiallyFromCache = true;
-      dbg('rendering from cache...');
       bootAndRender(true);
-      dbg('cache render done');
     }
 
     // ---- Step 2: fetch live data in background ----
     let fetched = false;
 
     const onFetched = (data, failed) => {
-      dbg('onFetched called, failed='+failed+', data='+(!!data));
       hideFetchingBanner();
       if(!failed && data){ dataset = data; loadError = false; }
       else if(failed){ loadError = true; }
@@ -1617,18 +1594,13 @@ const Data = (() => {
     };
 
     if(typeof Data !== 'undefined' && Data.getFeed){
-      dbg('calling Data.getFeed('+currentComp+')...');
       Data.getFeed(currentComp)
-        .then(data => { dbg('getFeed resolved'); onFetched(data, false); })
-        .catch(e => { dbg('getFeed error: '+e.message); console.warn('initial data load failed', e); onFetched(null, true); });
     } else {
-      dbg('Data or getFeed not available!');
       loadError = true;
     }
 
     // ---- Step 3: safety net — if no cache and fetch is slow, show TUNING IN ----
     setTimeout(() => {
-      dbg('safety net fired, initiallyFromCache='+initiallyFromCache+', fetched='+fetched);
       if(initiallyFromCache){
         if(currentPage===302||currentPage===303||currentPage===304) showFetchingBanner();
       } else if(!fetched){
