@@ -866,10 +866,10 @@ const Data = (() => {
       const c = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(code) : null;
       if(c && c.matches) c.matches.forEach(m=>{ if(!allCachedMatches.find(x=>x.id===m.id)) allCachedMatches.push(m); });
     });
-    // Include current dataset too (may be fresher)
+    // Always include current dataset (fresher than cache)
     (dataset.matches||[]).forEach(m=>{ if(!allCachedMatches.find(x=>x.id===m.id)) allCachedMatches.push(m); });
 
-    const starredNow = allCachedMatches.filter(m=>isMatchFavourited(m)&&canStarMatch(m));
+    const starredNow = allCachedMatches.filter(m=>canStarMatch(m)&&isMatchFavourited(m));
     if(starredNow.length && !classicMode){
       screen.appendChild(el('div','starred-header','★ YOUR TEAMS'));
       starredNow.forEach((m,i)=>{
