@@ -187,6 +187,7 @@
   .match .star-btn{ flex:0 0 1.4em; text-align:right; background:none; border:none;
     font:inherit; cursor:pointer; color:#444; font-size:0.9em; padding:0; line-height:1; }
   .match .star-btn.starred{ color:var(--yellow); }
+  .match .star-placeholder{ flex:0 0 1.4em; } /* reserves space when no star shown */
   .starred-header{ color:var(--yellow); font-size:0.78em; letter-spacing:0.1em;
     margin:8px 0 6px; border-bottom:1px solid #333; padding-bottom:4px; }
   .starred-divider{ height:1px; background:#333; margin:10px 0 8px; }
@@ -702,15 +703,20 @@ const Data = (() => {
     r.appendChild(el('span','score', upcoming ? 'v' : (m.hs+'-'+m.as)));
     r.appendChild(el('span','team', m.away));
     r.appendChild(statusCell(m));
-    if(showStar && canStarMatch(m)){
-      const isStarred = starredMatches.has(String(m.id));
-      const starBtn = el('button','star-btn'+(isStarred?' starred':''), isStarred?'★':'☆');
-      starBtn.addEventListener('click', e=>{
-        e.stopPropagation();
-        toggleMatchStar(m.id);
-        renderScores();
-      });
-      r.appendChild(starBtn);
+    if(showStar){
+      if(canStarMatch(m)){
+        const isStarred = starredMatches.has(String(m.id));
+        const starBtn = el('button','star-btn'+(isStarred?' starred':''), isStarred?'★':'☆');
+        starBtn.addEventListener('click', e=>{
+          e.stopPropagation();
+          toggleMatchStar(m.id);
+          renderScores();
+        });
+        r.appendChild(starBtn);
+      } else {
+        // Placeholder keeps alignment consistent for finished matches
+        r.appendChild(el('span','star-placeholder'));
+      }
     }
     if(tappable){
       r.classList.add('tappable');
@@ -726,7 +732,7 @@ const Data = (() => {
     const a = (m.scorers && m.scorers.away) || [];
     if(h.length===0 && a.length===0){
       const started = m.status==='IN_PLAY' || m.status==='PAUSED' || m.status==='FINISHED';
-      if(started){
+      if(started && !classicMode){
         out.push(el('div','row hint scorers-empty', 'NO SCORER DATA AVAILABLE'));
       }
       return out;
@@ -829,6 +835,10 @@ const Data = (() => {
     if(!dataset){ screen.innerHTML='<div class="notice">TUNING IN&hellip;</div>'; return; }
 
     if(classicMode){
+      // If we already have a competition selected and data loaded, skip the picker
+      if(!classicPaged && currentComp && dataset && dataset.matches && dataset.matches.length){
+        classicPaged = true; classicPageIdx = 0;
+      }
       if(!classicPaged) return renderClassicPicker();
       return renderClassicPage();
     }
@@ -1132,15 +1142,14 @@ const Data = (() => {
     screen.innerHTML='';
     buildHeader(screen,'TEAMS','305','MY TEAMS');
 
-    // Collect all unique teams across all cached competitions
-    const allTeams = new Map(); // name -> comp short label
-    Object.entries(COMP_CONFIG).forEach(([code, cfg])=>{
-      const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(code) : null;
-      const matches = (cached && cached.matches) || (code===currentComp && dataset ? dataset.matches : []);
-      (matches||[]).forEach(m=>{
-        if(m.home && m.home!=='TBD') allTeams.set(m.home, cfg.short);
-        if(m.away && m.away!=='TBD') allTeams.set(m.away, cfg.short);
-      });
+    // Only show teams from the currently selected competition
+    const cfg = COMP_CONFIG[currentComp] || {};
+    const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(currentComp) : null;
+    const matches = (cached && cached.matches) || (dataset ? dataset.matches : []);
+    const allTeams = new Map();
+    (matches||[]).forEach(m=>{
+      if(m.home && m.home!=='TBD') allTeams.set(m.home, cfg.short||currentComp);
+      if(m.away && m.away!=='TBD') allTeams.set(m.away, cfg.short||currentComp);
     });
 
     if(!allTeams.size){
