@@ -183,6 +183,20 @@
   .index-row .num-btn{ width:2.6em; }
   .index-row .label{ color:var(--white); cursor:pointer; }
   .hint{ color:#666; margin-top:8px; font-size:.92em; }
+  /* Favourites */
+  .match .star-btn{ flex:0 0 1.4em; text-align:right; background:none; border:none;
+    font:inherit; cursor:pointer; color:#444; font-size:0.9em; padding:0; line-height:1; }
+  .match .star-btn.starred{ color:var(--yellow); }
+  .starred-header{ color:var(--yellow); font-size:0.78em; letter-spacing:0.1em;
+    margin:4px 0 3px; display:flex; align-items:center; gap:6px; }
+  .starred-header::after{ content:''; flex:1; border-bottom:1px solid #333; }
+  .starred-divider{ height:1px; background:#333; margin:8px 0 6px; }
+  .team-row{ display:flex; align-items:center; gap:8px; padding:4px 0; cursor:pointer; }
+  .team-row .t-star{ color:#444; font-size:1em; flex:0 0 auto; }
+  .team-row .t-name{ flex:1; }
+  .team-row .t-comp{ color:#555; font-size:0.78em; }
+  .team-row.starred .t-star{ color:var(--yellow); }
+  .team-row.starred .t-name{ color:var(--cyan); }
   .lineup-sep{ color:#555; text-align:center; margin:4px 0; font-size:.82em; }
   .lineup-coach .team{ color:#888; font-size:0.85em; }
   .lineup-header .team{ color:var(--yellow); font-size:0.82em; }
@@ -499,6 +513,45 @@ const Data = (() => {
   let dataset = null;             // loaded from Data layer
   let loadError = false;
 
+  // ---- Favourites (localStorage) ------------------------------------------
+  let starredTeams   = new Set(); // team names (uppercased) — persists all season
+  let starredMatches = new Set(); // match IDs — one-off, for upcoming/live only
+
+  function loadFavourites(){
+    try{
+      const t = localStorage.getItem('p302_starTeams');
+      if(t) starredTeams = new Set(JSON.parse(t));
+      const m = localStorage.getItem('p302_starMatches');
+      if(m) starredMatches = new Set(JSON.parse(m));
+    }catch(e){}
+  }
+  function saveFavourites(){
+    try{
+      localStorage.setItem('p302_starTeams',   JSON.stringify([...starredTeams]));
+      localStorage.setItem('p302_starMatches', JSON.stringify([...starredMatches]));
+    }catch(e){}
+  }
+  function toggleTeamStar(name){
+    if(starredTeams.has(name)) starredTeams.delete(name);
+    else starredTeams.add(name);
+    saveFavourites();
+  }
+  function toggleMatchStar(id){
+    const sid = String(id);
+    if(starredMatches.has(sid)) starredMatches.delete(sid);
+    else starredMatches.add(sid);
+    saveFavourites();
+  }
+  function isMatchFavourited(m){
+    // Starred if explicitly starred, or either team is a starred team
+    return starredMatches.has(String(m.id)) ||
+           starredTeams.has(m.home) || starredTeams.has(m.away);
+  }
+  function canStarMatch(m){
+    return m.status==='TIMED'||m.status==='SCHEDULED'||
+           m.status==='IN_PLAY'||m.status==='PAUSED';
+  }
+
   // ---------- helpers ----------
   function el(tag, cls, html){
     const e = document.createElement(tag);
@@ -642,7 +695,7 @@ const Data = (() => {
     return el('span','status status-time', formatLocalTime(m.kickoff));
   }
 
-  function matchRow(m, key, tappable){
+  function matchRow(m, key, tappable, showStar){
     const r = row('match');
     if(key) r.id = key;
     const upcoming = m.status === 'TIMED' || m.status === 'SCHEDULED';
@@ -650,6 +703,16 @@ const Data = (() => {
     r.appendChild(el('span','score', upcoming ? 'v' : (m.hs+'-'+m.as)));
     r.appendChild(el('span','team', m.away));
     r.appendChild(statusCell(m));
+    if(showStar && canStarMatch(m)){
+      const isStarred = starredMatches.has(String(m.id));
+      const starBtn = el('button','star-btn'+(isStarred?' starred':''), isStarred?'★':'☆');
+      starBtn.addEventListener('click', e=>{
+        e.stopPropagation();
+        toggleMatchStar(m.id);
+        renderScores();
+      });
+      r.appendChild(starBtn);
+    }
     if(tappable){
       r.classList.add('tappable');
       if(expandedMatches[key]) r.classList.add('expanded');
@@ -797,6 +860,31 @@ const Data = (() => {
     target.setDate(target.getDate() + dayOffset);
     const targetKey = localDateKey(target);
 
+    // ---- Starred section: upcoming/live matches from ANY competition ----
+    const allCachedMatches = [];
+    Object.keys(COMP_CONFIG).forEach(code=>{
+      const c = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(code) : null;
+      if(c && c.matches) c.matches.forEach(m=>{ if(!allCachedMatches.find(x=>x.id===m.id)) allCachedMatches.push(m); });
+    });
+    // Include current dataset too (may be fresher)
+    (dataset.matches||[]).forEach(m=>{ if(!allCachedMatches.find(x=>x.id===m.id)) allCachedMatches.push(m); });
+
+    const starredNow = allCachedMatches.filter(m=>isMatchFavourited(m)&&canStarMatch(m));
+    if(starredNow.length && !classicMode){
+      screen.appendChild(el('div','starred-header','★ YOUR TEAMS'));
+      starredNow.forEach((m,i)=>{
+        const key = 'star-'+i;
+        const started = m.status==='IN_PLAY'||m.status==='PAUSED';
+        const tappable = started || hasLineup(m);
+        screen.appendChild(matchRow(m, key, tappable, false)); // no star button in starred section
+        if(expandedMatches[key]){
+          if(!started && hasLineup(m)) lineupRows(m).forEach(r=>screen.appendChild(r));
+          else { scorerRows(m).forEach(r=>screen.appendChild(r)); }
+        }
+      });
+      screen.appendChild(el('div','starred-divider'));
+    }
+
     const nav = row('day-nav');
     const prevBtn = el('button','day-arrow','◀');
     const nextBtn = el('button','day-arrow','▶');
@@ -817,24 +905,21 @@ const Data = (() => {
     } else {
       let lastGroup = null;
       dayMatches.forEach((m,i)=>{
-        const key = 'd'+dayOffset+'-m'+i; // day-scoped key so expand state doesn't collide across days
+        const key = 'd'+dayOffset+'-m'+i;
         if(m.group && m.group !== lastGroup){
           screen.appendChild(el('div','section-title','GROUP '+m.group));
           lastGroup = m.group;
         }
         const started = m.status==='IN_PLAY'||m.status==='PAUSED'||m.status==='FINISHED';
         const tappable = started || hasLineup(m);
-        screen.appendChild(matchRow(m,key,tappable));
+        screen.appendChild(matchRow(m, key, tappable, !classicMode)); // show star in modern mode
         if(expandedMatches[key]){
           if(!started && hasLineup(m)){
-            // Pre-match with lineups: show team sheets only
             lineupRows(m).forEach(r=>screen.appendChild(r));
           } else {
-            // Started: scorers first, then lineups if available
             scorerRows(m).forEach(r=>screen.appendChild(r));
             if(hasLineup(m)){
-              const sep = el('div','row hint lineup-sep','— LINEUPS —');
-              screen.appendChild(sep);
+              screen.appendChild(el('div','row hint lineup-sep','— LINEUPS —'));
               lineupRows(m).forEach(r=>screen.appendChild(r));
             }
           }
@@ -1055,27 +1140,43 @@ const Data = (() => {
     screen.innerHTML='';
     buildHeader(screen,'TEAMS','305','MY TEAMS');
 
-    const allTeams = new Map();
+    // Collect all unique teams across all cached competitions
+    const allTeams = new Map(); // name -> comp short label
     Object.entries(COMP_CONFIG).forEach(([code, cfg])=>{
       const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(code) : null;
       const matches = (cached && cached.matches) || (code===currentComp && dataset ? dataset.matches : []);
       (matches||[]).forEach(m=>{
-        if(m.home && m.home !== 'TBD') allTeams.set(m.home, cfg.short);
-        if(m.away && m.away !== 'TBD') allTeams.set(m.away, cfg.short);
+        if(m.home && m.home!=='TBD') allTeams.set(m.home, cfg.short);
+        if(m.away && m.away!=='TBD') allTeams.set(m.away, cfg.short);
       });
     });
 
     if(!allTeams.size){
-      screen.appendChild(el('div','row hint','NO TEAM DATA YET — LOAD SCORES FIRST'));
+      screen.appendChild(el('div','row hint','NO TEAM DATA YET — VIEW SCORES FIRST'));
       applyStagger(screen); return;
     }
 
-    screen.appendChild(el('div','row hint','TAP A TEAM TO STAR THEM — COMING SOON'));
+    const hintText = starredTeams.size
+      ? starredTeams.size+' TEAM'+(starredTeams.size>1?'S':'')+' STARRED — TAP TO TOGGLE'
+      : 'TAP A TEAM TO STAR THEM';
+    const hint = el('div','row hint');
+    hint.textContent = hintText;
+    screen.appendChild(hint);
 
-    [...allTeams.entries()].sort(([a],[b])=>a.localeCompare(b)).forEach(([name, comp])=>{
-      const r = row('index-row');
-      r.appendChild(el('span','label', name));
-      r.appendChild(el('span','hint', comp));
+    // Starred teams first, then rest alphabetically
+    const sorted = [...allTeams.entries()].sort(([a],[b])=>{
+      const as=starredTeams.has(a), bs=starredTeams.has(b);
+      if(as&&!bs) return -1; if(!as&&bs) return 1;
+      return a.localeCompare(b);
+    });
+
+    sorted.forEach(([name, comp])=>{
+      const starred = starredTeams.has(name);
+      const r = el('div','row team-row'+(starred?' starred':''));
+      r.appendChild(el('span','t-star', starred?'★':'☆'));
+      r.appendChild(el('span','t-name', name));
+      r.appendChild(el('span','t-comp', comp));
+      r.addEventListener('click', ()=>{ toggleTeamStar(name); renderTeams(); });
       screen.appendChild(r);
     });
     applyStagger(screen);
@@ -1142,7 +1243,7 @@ const Data = (() => {
     const compName = el('div','comp-name', (COMP_CONFIG[currentComp]||{}).name || currentComp);
     screen.appendChild(compName);
 
-    [['302','LIVE SCORES'],['303','LEAGUE TABLE'],['304','FIXTURES']]
+    [['302','LIVE SCORES'],['303','LEAGUE TABLE'],['304','FIXTURES'],['305','★ MY TEAMS']]
     .forEach(([n,l])=>{
       const r = row('index-row');
       const b = el('button','num-btn',n); b.addEventListener('click',()=>renderPage(+n));
@@ -1409,6 +1510,7 @@ const Data = (() => {
     if(readPersist('classicMode')==='1') classicMode = true;
     const savedComp = readPersist('lastComp');
     if(savedComp && COMP_CONFIG[savedComp]) currentComp = savedComp;
+    loadFavourites();
 
     const bootAndRender = (skipBoot) => {
       let anyLive = false;
