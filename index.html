@@ -129,9 +129,9 @@
   .match-gap{ height:.5em; }
 
   /* Table */
-  .table-row{ gap:4px; }
-  .table-row .pos{ width:1.7em; color:#888; }
-  .table-row .name{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .table-row{ display:flex; align-items:baseline; gap:0; }
+  .table-row .pos{ flex:0 0 1.8em; color:#888; }
+  .table-row .name{ flex:1 1 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .table-row .name.alt{ color:var(--cyan); }
   .live-dot{
     display:inline-block; width:0.45em; height:0.45em;
@@ -139,8 +139,8 @@
     margin-left:0.4em; vertical-align:middle;
     animation:livepulse 1.2s ease-in-out infinite;
   }
-  .table-row .stat{ width:2.6em; text-align:right; }
-  .table-row .pts{ width:2.6em; text-align:right; color:var(--yellow); font-weight:bold; }
+  .table-row .stat{ flex:0 0 2.4em; text-align:right; }
+  .table-row .pts{ flex:0 0 2.8em; text-align:right; color:var(--yellow); font-weight:bold; }
   .table-row.head span{ color:var(--cyan); }
   .table-divider{ display:block; height:2px; padding:0; margin:3px 0; }
   .table-divider.auto{ background:var(--green); }
@@ -1464,16 +1464,16 @@ const Data = (() => {
     currentComp = code;
     try{ persist('lastComp', code); }catch(e){}
     dataset = null; loadError = false;
-    // Try cache first for instant switch
     const cached = typeof Data !== 'undefined' && Data.readCache ? Data.readCache(code) : null;
     if(cached){ dataset = cached; }
-    renderPage(302);
+    // Stay on whichever page the user is currently on
+    const pageToRender = (currentPage===302||currentPage===303||currentPage===304||currentPage===305) ? currentPage : 302;
+    renderPage(pageToRender);
     showFetchingBanner();
-    // Fetch fresh data for new comp
     try{
       if(typeof Data !== 'undefined' && Data.getFeed){
         const fresh = await Data.getFeed(code);
-        if(fresh){ dataset = fresh; loadError = false; hideFetchingBanner(); if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
+        if(fresh){ dataset = fresh; loadError = false; hideFetchingBanner(); if(currentPage===302||currentPage===303||currentPage===304||currentPage===305) renderers[currentPage](); }
       }
     }catch(e){ console.warn('comp switch fetch failed', e); hideFetchingBanner(); }
   }
