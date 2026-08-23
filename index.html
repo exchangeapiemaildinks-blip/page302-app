@@ -129,9 +129,9 @@
   .match-gap{ height:.5em; }
 
   /* Table */
-  .table-row{ display:flex; align-items:baseline; gap:0; }
-  .table-row .pos{ flex:0 0 1.8em; color:#888; }
-  .table-row .name{ flex:1 1 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .table-row{ display:flex !important; align-items:baseline !important; gap:0 !important; }
+  .table-row .pos{ flex:0 0 2em; min-width:2em; color:#888; }
+  .table-row .name{ flex:1 1 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:4px; }
   .table-row .name.alt{ color:var(--cyan); }
   .live-dot{
     display:inline-block; width:0.45em; height:0.45em;
@@ -139,8 +139,8 @@
     margin-left:0.4em; vertical-align:middle;
     animation:livepulse 1.2s ease-in-out infinite;
   }
-  .table-row .stat{ flex:0 0 2.4em; text-align:right; }
-  .table-row .pts{ flex:0 0 2.8em; text-align:right; color:var(--yellow); font-weight:bold; }
+  .table-row .stat{ flex:0 0 2.4em; min-width:2.4em; text-align:right; }
+  .table-row .pts{ flex:0 0 2.8em; min-width:2.8em; text-align:right; color:var(--yellow); font-weight:bold; }
   .table-row.head span{ color:var(--cyan); }
   .table-divider{ display:block; height:2px; padding:0; margin:3px 0; }
   .table-divider.auto{ background:var(--green); }
@@ -1546,10 +1546,13 @@ const Data = (() => {
       else if(failed){ loadError = true; }
       if(!fetched){
         fetched = true;
-        if(!initiallyFromCache) bootAndRender(false);
-        else if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage]();
+        // Only use bootAndRender if user hasn't navigated away from startup default
+        // (i.e. if currentPage is still the default startup page, not one the user chose)
+        const userHasNavigated = currentPage !== 302 && currentPage !== 304;
+        if(!initiallyFromCache && !userHasNavigated) bootAndRender(false);
+        else if(currentPage===302||currentPage===303||currentPage===304||currentPage===305) renderers[currentPage]();
       } else {
-        if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage]();
+        if(currentPage===302||currentPage===303||currentPage===304||currentPage===305) renderers[currentPage]();
       }
     };
 
@@ -1578,7 +1581,7 @@ const Data = (() => {
       try{
         if(typeof Data==='undefined' || !Data.getFeed) return;
         const fresh = await Data.getFeed(currentComp);
-        if(fresh){ dataset = fresh; loadError = false; if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
+        if(fresh){ dataset = fresh; loadError = false; if(currentPage===302||currentPage===303||currentPage===304||currentPage===305) renderers[currentPage](); }
       }catch(e){}
     });
 
@@ -1587,7 +1590,7 @@ const Data = (() => {
       try{
         if(typeof Data==='undefined' || !Data.getFeed) return;
         const fresh = await Data.getFeed(currentComp);
-        if(fresh){ dataset = fresh; loadError=false; if(currentPage===302||currentPage===303||currentPage===304) renderers[currentPage](); }
+        if(fresh){ dataset = fresh; loadError=false; if(currentPage===302||currentPage===303||currentPage===304||currentPage===305) renderers[currentPage](); }
       }catch(e){}
     }, 60000);
   }
