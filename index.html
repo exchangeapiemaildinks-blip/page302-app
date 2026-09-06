@@ -532,6 +532,26 @@ const Data = (() => {
   // ---------- state ----------
   let currentPage = 302;
   let currentComp = 'ELC'; // active competition code
+
+  // When fresh /feed data arrives, preserve any scorers/lineups we've already
+  // fetched on-demand for specific matches — a periodic refresh must never
+  // wipe out detail the user already tapped to reveal. Without this, an
+  // expanded match's scorers would vanish the next time the 60s refresh
+  // fires, since /feed is deliberately lightweight and never includes them.
+  function mergePreservingDetail(freshDataset){
+    if(!freshDataset || !freshDataset.matches || !dataset || !dataset.matches) return freshDataset;
+    const prevById = new Map(dataset.matches.map(m=>[String(m.id), m]));
+    freshDataset.matches = freshDataset.matches.map(m=>{
+      const prev = prevById.get(String(m.id));
+      if(prev && prev._detailFetched){
+        m._detailFetched = true;
+        m.scorers = prev.scorers;
+        m.lineups = prev.lineups;
+      }
+      return m;
+    });
+    return freshDataset;
+  }
   let classicMode = false;
   const expandedMatches = {};
   let classicPaged = false;       // false = league picker, true = showing pages
@@ -753,13 +773,13 @@ const Data = (() => {
       r.addEventListener('click', () => {
         const wasExpanded = expandedMatches[key];
         expandedMatches[key] = !wasExpanded;
-        renderScores();
-        // Fetch scorers/lineups on demand the moment this match is expanded,
-        // if we don't already have them — this is what keeps initial load
-        // instant: nothing is fetched until the user actually taps a match.
+        // Set fetching flag BEFORE the render below, so scorerRows shows
+        // "LOADING…" immediately rather than flashing "NO SCORER DATA" first.
         if(!wasExpanded && !m._detailFetched && typeof Data !== 'undefined' && Data.getMatchDetail){
           m._detailFetching = true;
-          renderScores();
+        }
+        renderScores();
+        if(!wasExpanded && !m._detailFetched && typeof Data !== 'undefined' && Data.getMatchDetail){
           Data.getMatchDetail(m.id).then(detail=>{
             m._detailFetching = false;
             m._detailFetched = true;
@@ -1593,7 +1613,7 @@ const Data = (() => {
     try{
       if(typeof Data !== 'undefined' && Data.getFeed){
         const fresh = await Data.getFeed(code);
-        if(fresh){ dataset = fresh; loadError = false; hideFetchingBanner(); if(renderers[currentPage]) renderers[currentPage](); }
+        if(fresh){ dataset = mergePreservingDetail(fresh); loadError = false; hideFetchingBanner(); if(renderers[currentPage]) renderers[currentPage](); }
       }
     }catch(e){ console.warn('comp switch fetch failed', e); hideFetchingBanner(); }
   }
@@ -1662,7 +1682,7 @@ const Data = (() => {
 
     const onFetched = (data, failed) => {
       hideFetchingBanner();
-      if(!failed && data){ dataset = data; loadError = false; }
+      if(!failed && data){ dataset = mergePreservingDetail(data); loadError = false; }
       else if(failed){ loadError = true; }
       if(!fetched){
         fetched = true;
@@ -1702,18 +1722,37 @@ const Data = (() => {
       try{
         if(typeof Data==='undefined' || !Data.getFeed) return;
         const fresh = await Data.getFeed(currentComp);
-        if(fresh){ dataset = fresh; loadError = false; if(currentPage===302||currentPage===303||currentPage===304||currentPage===305) renderers[currentPage](); }
+        if(fresh){ dataset = mergePreservingDetail(fresh); loadError = false; if(currentPage===302||currentPage===303||currentPage===304||currentPage===305) renderers[currentPage](); }
       }catch(e){}
     });
 
-    // periodic refresh (every 60s)
-    setInterval(async ()=>{
-      try{
-        if(typeof Data==='undefined' || !Data.getFeed) return;
-        const fresh = await Data.getFeed(currentComp);
-        if(fresh){ dataset = fresh; loadError=false; if(currentPage===302||currentPage===303||currentPage===304||currentPage===305) renderers[currentPage](); }
-      }catch(e){}
-    }, 60000);
+    // Adaptive periodic refresh: poll aggressively while any match is live,
+    // back off to the relaxed cadence otherwise. A fixed-interval poll can't
+    // change its own delay, so this reschedules itself via setTimeout after
+    // each fetch completes, choosing the next delay based on current state.
+    // This is the single biggest lever on "how stale can a live score be" —
+    // 60s was an unacceptable ceiling for anyone watching a live match.
+    const REFRESH_LIVE_MS = 15000;   // any match IN_PLAY/PAUSED right now
+    const REFRESH_IDLE_MS = 60000;   // nothing live — relax the polling rate
+
+    function anyLiveInDataset(){
+      try{ return !!(dataset && dataset.matches && dataset.matches.some(m=>m.status==='IN_PLAY'||m.status==='PAUSED')); }
+      catch(e){ return false; }
+    }
+
+    async function scheduleNextRefresh(){
+      const delay = anyLiveInDataset() ? REFRESH_LIVE_MS : REFRESH_IDLE_MS;
+      setTimeout(async ()=>{
+        try{
+          if(typeof Data!=='undefined' && Data.getFeed){
+            const fresh = await Data.getFeed(currentComp);
+            if(fresh){ dataset = mergePreservingDetail(fresh); loadError=false; if(currentPage===302||currentPage===303||currentPage===304||currentPage===305) renderers[currentPage](); }
+          }
+        }catch(e){}
+        scheduleNextRefresh(); // always reschedule, using freshly-updated dataset to decide the next delay
+      }, delay);
+    }
+    scheduleNextRefresh();
   }
 
   // Last-resort guard: if anything above throws, at least show a message.
