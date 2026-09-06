@@ -116,7 +116,7 @@
   .match .score{ flex:0 0 3.5em; text-align:center; color:var(--yellow); font-weight:bold; }
   .match .status{ flex:0 0 3em; text-align:right; }
   .status-ft{ color:var(--green); }
-  .status-live{ color:var(--red); animation:flash 1s steps(2,start) infinite; }
+  .status-live{ color:var(--white); }
   @keyframes livepulse{ 0%,100%{opacity:1;} 50%{opacity:0.15;} }
   .status-time{ color:var(--yellow); }
   @media (prefers-reduced-motion:reduce){ .status-live{animation:none;} }
@@ -247,6 +247,14 @@
 
   /* Boot — CRT power-on */
   .crt-stage{ position:absolute; inset:0; background:#000; overflow:hidden; z-index:10; }
+  .remote-type-stage{ position:absolute; inset:0; background:#000; display:flex;
+    align-items:center; justify-content:center; z-index:11; }
+  .remote-type-digits{ display:flex; gap:0.15em; font-family:'Press Start 2P', monospace;
+    font-size:clamp(32px,14vw,64px); color:var(--yellow); letter-spacing:0.05em; }
+  .remote-type-digits .rt-cursor{ animation:rtBlink 0.5s steps(2,start) infinite; }
+  @keyframes rtBlink{ 0%,100%{opacity:1;} 50%{opacity:0;} }
+  .remote-type-hint{ position:absolute; bottom:12vh; left:0; right:0; text-align:center;
+    color:#555; font-size:0.72em; letter-spacing:0.1em; }
 
   /* the screen "content" that blooms open */
   .crt-bloom{
@@ -399,9 +407,27 @@ const Data = (() => {
   // ---- CONFIG -------------------------------------------------------------
   const USE_LIVE = true;
   const BACKEND_BASE = 'https://page302-backend.onrender.com/feed';
+  const MATCH_DETAIL_BASE = 'https://page302-backend.onrender.com/match-detail';
 
   function feedUrl(comp) {
     return BACKEND_BASE + '?comp=' + encodeURIComponent(comp || 'ELC');
+  }
+
+  // Fetches scorers + lineups for ONE match, on demand — called only when
+  // the user taps to expand a match, never in the background. Keeps /feed
+  // itself fast since it never has to wait on per-match detail fetches.
+  async function getMatchDetail(matchId){
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), 10000);
+    try{
+      const res = await fetch(MATCH_DETAIL_BASE+'?id='+encodeURIComponent(matchId),
+        { headers:{'Accept':'application/json'}, signal:controller.signal });
+      if(!res.ok) throw new Error('match-detail '+res.status);
+      const data = await res.json();
+      return JSON.parse(JSON.stringify(data));
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // ---- MOCK DATA: WORLD CUP 2026, matchday around 14 June ------------------
@@ -498,7 +524,7 @@ const Data = (() => {
     return mockWorldCup();
   }
 
-  return { getFeed, readCache, USE_LIVE };
+  return { getFeed, readCache, getMatchDetail, USE_LIVE };
 })();
 
 </script>
@@ -724,13 +750,41 @@ const Data = (() => {
     if(tappable){
       r.classList.add('tappable');
       if(expandedMatches[key]) r.classList.add('expanded');
-      r.addEventListener('click', () => { expandedMatches[key] = !expandedMatches[key]; renderScores(); });
+      r.addEventListener('click', () => {
+        const wasExpanded = expandedMatches[key];
+        expandedMatches[key] = !wasExpanded;
+        renderScores();
+        // Fetch scorers/lineups on demand the moment this match is expanded,
+        // if we don't already have them — this is what keeps initial load
+        // instant: nothing is fetched until the user actually taps a match.
+        if(!wasExpanded && !m._detailFetched && typeof Data !== 'undefined' && Data.getMatchDetail){
+          m._detailFetching = true;
+          renderScores();
+          Data.getMatchDetail(m.id).then(detail=>{
+            m._detailFetching = false;
+            m._detailFetched = true;
+            if(detail){
+              m.scorers = detail.scorers || m.scorers;
+              m.lineups = detail.lineups || m.lineups;
+            }
+            if(expandedMatches[key]) renderScores();
+          }).catch(()=>{
+            m._detailFetching = false;
+            m._detailFetched = true; // don't retry forever on error
+            if(expandedMatches[key]) renderScores();
+          });
+        }
+      });
     }
     return r;
   }
 
   function scorerRows(m){
     const out = [];
+    if(m._detailFetching){
+      out.push(el('div','row hint scorers-empty', 'LOADING SCORERS…'));
+      return out;
+    }
     const h = (m.scorers && m.scorers.home) || [];
     const a = (m.scorers && m.scorers.away) || [];
     if(h.length===0 && a.length===0){
@@ -809,6 +863,18 @@ const Data = (() => {
     return !!(m.lineups && m.lineups.home && m.lineups.home.lineup && m.lineups.home.lineup.length > 0);
   }
 
+  // Used for tappability BEFORE we've fetched detail — lineups typically drop
+  // ~1hr before kickoff, so treat anything within 2hrs as "might have one,
+  // worth letting the user tap to check" rather than requiring proof upfront
+  // (which would need a fetch we're deliberately not doing until tapped).
+  function mightHaveLineup(m){
+    if(hasLineup(m)) return true; // already confirmed via a previous tap
+    if(m.status!=='TIMED' && m.status!=='SCHEDULED') return false;
+    if(!m.kickoff) return false;
+    const msToKickoff = new Date(m.kickoff).getTime() - Date.now();
+    return msToKickoff > 0 && msToKickoff < 2*60*60*1000;
+  }
+
   function matchRowCount(m){
     const h=(m.scorers&&m.scorers.home)||[], a=(m.scorers&&m.scorers.away)||[];
     return 1 + Math.max(h.length,a.length);
@@ -882,11 +948,16 @@ const Data = (() => {
       starredNow.forEach((m,i)=>{
         const key = 'star-'+i;
         const started = m.status==='IN_PLAY'||m.status==='PAUSED';
-        const tappable = started || hasLineup(m);
+        const tappable = started || mightHaveLineup(m);
         screen.appendChild(matchRow(m, key, tappable, false)); // no star button in starred section
         if(expandedMatches[key]){
-          if(!started && hasLineup(m)) lineupRows(m).forEach(r=>screen.appendChild(r));
-          else { scorerRows(m).forEach(r=>screen.appendChild(r)); }
+          if(!started){
+            if(m._detailFetching) scorerRows(m).forEach(r=>screen.appendChild(r)); // shows LOADING…
+            else if(hasLineup(m)) lineupRows(m).forEach(r=>screen.appendChild(r));
+            else screen.appendChild(el('div','row hint scorers-empty','NO LINEUP AVAILABLE YET'));
+          } else {
+            scorerRows(m).forEach(r=>screen.appendChild(r));
+          }
         }
       });
       screen.appendChild(el('div','starred-divider'));
@@ -916,11 +987,13 @@ const Data = (() => {
           lastGroup = m.group;
         }
         const started = m.status==='IN_PLAY'||m.status==='PAUSED'||m.status==='FINISHED';
-        const tappable = started || hasLineup(m);
+        const tappable = started || mightHaveLineup(m);
         screen.appendChild(matchRow(m, key, tappable, !classicMode)); // show star in modern mode
         if(expandedMatches[key]){
-          if(!started && hasLineup(m)){
-            lineupRows(m).forEach(r=>screen.appendChild(r));
+          if(!started){
+            if(m._detailFetching) scorerRows(m).forEach(r=>screen.appendChild(r)); // shows LOADING…
+            else if(hasLineup(m)) lineupRows(m).forEach(r=>screen.appendChild(r));
+            else screen.appendChild(el('div','row hint scorers-empty','NO LINEUP AVAILABLE YET'));
           } else {
             scorerRows(m).forEach(r=>screen.appendChild(r));
             if(hasLineup(m)){
@@ -955,7 +1028,9 @@ const Data = (() => {
     const screen = document.getElementById('screen');
     screen.innerHTML='';
     const todayKey = localDateKey(todayReference());
-    const todaysMatches = dataset.matches.filter(m => matchDateKey(m) === todayKey);
+    const todaysMatches = dataset.matches
+      .filter(m => matchDateKey(m) === todayKey)
+      .sort((a,b) => a.home.localeCompare(b.home));
     const pages = paginate(todaysMatches, 12);
     if(!pages.length){ classicPaged=false; return renderScores(); }
     if(classicPageIdx >= pages.length) classicPageIdx = 0;
@@ -1269,34 +1344,72 @@ const Data = (() => {
     if(reduce){ done(); return; }
 
     screen.innerHTML='';
-    const stage = el('div','crt-stage');
-    const bloom = el('div','crt-bloom');
-    const line  = el('div','crt-line');
-    const dot   = el('div','crt-dot');
-    const flick = el('div','crt-flicker');
-    stage.appendChild(bloom); stage.appendChild(line); stage.appendChild(dot); stage.appendChild(flick);
-    screen.appendChild(stage);
 
-    // Phase 1 (0–620ms): tube warms up — dot flash, line snaps wide, screen blooms open.
-    // Phase 2 (~620ms): brief colour static as the "signal" tunes in.
-    setTimeout(()=>{
-      const noise = el('div','boot-noise'); stage.appendChild(noise);
-      const chars='#%&@*+=-_|/\\.:', cols=['var(--red)','var(--green)','var(--yellow)','var(--blue)','var(--magenta)','var(--cyan)','var(--white)'];
-      const nz=setInterval(()=>{
-        let o=''; for(let i=0;i<170;i++) o+='<span style="color:'+cols[Math.floor(Math.random()*cols.length)]+'">'+chars[Math.floor(Math.random()*chars.length)]+'</span>';
-        noise.innerHTML=o;
-      },60);
+    // ---- Phase 0: remote-control typing "302", teletext-style ----
+    // Digits appear one at a time as if someone is keying in a page number
+    // on their TV remote, cursor blinking after the last digit typed.
+    const typeStage = el('div','remote-type-stage');
+    const digitsEl = el('div','remote-type-digits');
+    typeStage.appendChild(digitsEl);
+    typeStage.appendChild(el('div','remote-type-hint','TEXT · 3 0 2'));
+    screen.appendChild(typeStage);
 
-      // Phase 3: static clears, "RETRIEVING" with the loading bar.
+    const target = ['3','0','2'];
+    let typed = [];
+    function renderTyped(){
+      digitsEl.innerHTML='';
+      typed.forEach(d=>digitsEl.appendChild(el('span','',d)));
+      if(typed.length < target.length){
+        digitsEl.appendChild(el('span','rt-cursor','_'));
+      }
+    }
+    renderTyped();
+
+    let i = 0;
+    function typeNext(){
+      if(i >= target.length){
+        // Brief pause with full "302" and blinking cursor gone, then hand off to CRT boot
+        setTimeout(()=>{ screen.innerHTML=''; startCrtPhase(); }, 380);
+        return;
+      }
+      typed.push(target[i]);
+      renderTyped();
+      i++;
+      // Slightly uneven timing — feels like real button presses, not a metronome
+      setTimeout(typeNext, 260 + Math.random()*140);
+    }
+    setTimeout(typeNext, 400); // brief pause before typing starts
+
+    function startCrtPhase(){
+      const stage = el('div','crt-stage');
+      const bloom = el('div','crt-bloom');
+      const line  = el('div','crt-line');
+      const dot   = el('div','crt-dot');
+      const flick = el('div','crt-flicker');
+      stage.appendChild(bloom); stage.appendChild(line); stage.appendChild(dot); stage.appendChild(flick);
+      screen.appendChild(stage);
+
+      // Phase 1 (0–620ms): tube warms up — dot flash, line snaps wide, screen blooms open.
+      // Phase 2 (~620ms): brief colour static as the "signal" tunes in.
       setTimeout(()=>{
-        clearInterval(nz);
-        stage.innerHTML='';
-        stage.appendChild(el('div','boot-msg','RETRIEVING PAGE 302'));
-        const bar=el('div','boot-bar'), fill=el('div','boot-bar-fill'); bar.appendChild(fill); stage.appendChild(bar);
-        requestAnimationFrame(()=>fill.style.width='100%');
-        setTimeout(done, 950);
-      },420);
-    },640);
+        const noise = el('div','boot-noise'); stage.appendChild(noise);
+        const chars='#%&@*+=-_|/\\.:', cols=['var(--red)','var(--green)','var(--yellow)','var(--blue)','var(--magenta)','var(--cyan)','var(--white)'];
+        const nz=setInterval(()=>{
+          let o=''; for(let i=0;i<170;i++) o+='<span style="color:'+cols[Math.floor(Math.random()*cols.length)]+'">'+chars[Math.floor(Math.random()*chars.length)]+'</span>';
+          noise.innerHTML=o;
+        },60);
+
+        // Phase 3: static clears, "RETRIEVING" with the loading bar.
+        setTimeout(()=>{
+          clearInterval(nz);
+          stage.innerHTML='';
+          stage.appendChild(el('div','boot-msg','RETRIEVING PAGE 302'));
+          const bar=el('div','boot-bar'), fill=el('div','boot-bar-fill'); bar.appendChild(fill); stage.appendChild(bar);
+          requestAnimationFrame(()=>fill.style.width='100%');
+          setTimeout(done, 950);
+        },420);
+      },640);
+    }
   }
 
   // ---------- routing ----------
